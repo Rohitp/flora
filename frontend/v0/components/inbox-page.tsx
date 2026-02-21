@@ -482,15 +482,19 @@ export function InboxPage() {
   const [filter, setFilter] = useState<Tab>("all")
 
   const fetchAll = useCallback(async () => {
-    const [msgs, custs] = await Promise.all([
-      api.inbox.list(),
-      api.customers.list(),
-    ])
-    setMessages(msgs)
-    setCustomers(custs)
-    // Auto-select first message if none selected
-    if (msgs.length > 0 && selectedId === null) {
-      setSelectedId(msgs[0].ticket_id)
+    try {
+      const [msgs, custs] = await Promise.all([
+        api.inbox.list(),
+        api.customers.list(),
+      ])
+      setMessages(msgs)
+      setCustomers(custs)
+      // Auto-select first message if none selected
+      if (msgs.length > 0 && selectedId === null) {
+        setSelectedId(msgs[0].ticket_id)
+      }
+    } catch (e) {
+      console.warn("[inbox] poll failed:", e)
     }
   }, [selectedId])
 

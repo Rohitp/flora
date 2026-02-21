@@ -65,6 +65,7 @@ export function DashboardPage() {
     const interval = setInterval(() => {
       Promise.all([api.dashboard.summary(), api.customers.list()])
         .then(([s, c]) => { setSummary(s); setCustomers(c) })
+        .catch(e => console.warn("[dashboard] poll failed:", e))
     }, 10000)
     return () => clearInterval(interval)
   }, [])
