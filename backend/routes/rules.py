@@ -69,6 +69,19 @@ def _apply_agent_output(db: Session, result: dict) -> tuple[int, int]:
     return rules_count, len(scheduled_invoices)
 
 
+@router.post("/{rule_id}/pause", response_model=RuleOut)
+def toggle_rule_pause(rule_id: int, db: Session = Depends(get_db)):
+    """Toggle a rule between active and paused. Paused rules are excluded from future scheduling runs."""
+    from fastapi import HTTPException
+    rule = db.query(Rule).filter(Rule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    rule.status = "paused" if rule.status == "active" else "active"
+    db.commit()
+    db.refresh(rule)
+    return RuleOut.model_validate(rule)
+
+
 @router.get("", response_model=list[RuleOut])
 def list_rules(db: Session = Depends(get_db)):
     rules = db.query(Rule).order_by(Rule.id).all()

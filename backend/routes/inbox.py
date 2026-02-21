@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
-from models import InboxMessage, Customer, Invoice, ActionLog
-from schemas import InboxMessageOut, SimulateMessageIn
+from models import InboxMessage, Customer, Invoice, ActionLog, ScheduledAction
+from schemas import InboxMessageOut, SimulateMessageIn, ThreadOut, ScheduledActionOut
 
 router = APIRouter(prefix="/inbox", tags=["inbox"])
 
@@ -58,6 +58,32 @@ def simulate_message(payload: SimulateMessageIn, db: Session = Depends(get_db)):
         simulated=True,
     )
     return _enrich(msg)
+
+
+@router.get("/{ticket_id}/thread", response_model=ThreadOut)
+def get_thread(ticket_id: str, db: Session = Depends(get_db)):
+    """
+    Returns the full thread context: the email message plus all scheduled
+    actions for the associated invoice. Useful for seeing the schedule impact
+    of an email without querying two endpoints.
+    """
+    msg = db.query(InboxMessage).filter(InboxMessage.ticket_id == ticket_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    actions = []
+    if msg.invoice_id:
+        actions = (
+            db.query(ScheduledAction)
+            .filter(ScheduledAction.invoice_id == msg.invoice_id)
+            .order_by(ScheduledAction.scheduled_date)
+            .all()
+        )
+
+    return ThreadOut(
+        message=_enrich(msg),
+        scheduled_actions=[ScheduledActionOut.model_validate(a) for a in actions],
+    )
 
 
 class SendReplyIn(BaseModel):

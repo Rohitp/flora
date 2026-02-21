@@ -144,6 +144,13 @@ class DashboardOut(BaseModel):
     recent_activity: list[ActionLogOut]
 
 
+# --- Thread ---
+
+class ThreadOut(BaseModel):
+    message: InboxMessageOut
+    scheduled_actions: list[ScheduledActionOut]
+
+
 # --- Simulate Message ---
 
 class SimulateMessageIn(BaseModel):

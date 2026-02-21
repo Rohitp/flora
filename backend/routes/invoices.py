@@ -15,6 +15,7 @@ def list_invoices(db: Session = Depends(get_db)):
     return [_invoice_to_summary(i) for i in invoices]
 
 
+@router.get("/{invoice_id}/timeline", response_model=InvoiceScheduleOut)
 @router.get("/{invoice_id}/schedule", response_model=InvoiceScheduleOut)
 def get_invoice_schedule(invoice_id: int, db: Session = Depends(get_db)):
     invoice = (

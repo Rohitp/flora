@@ -1,12 +1,13 @@
 import os
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
-from database import engine, SessionLocal, Base
+from sqlalchemy.orm import Session
+from database import engine, SessionLocal, Base, get_db
 import models  # ensure all models are registered before create_all
 from seed import seed
 from routes import customers, invoices, rules, inbox, dashboard, admin
@@ -57,11 +58,7 @@ app.include_router(admin.router)
 
 
 @app.get("/health")
-def health():
-    db = SessionLocal()
-    try:
-        from models import Customer
-        count = db.query(Customer).count()
-        return {"status": "ok", "db_seeded": count > 0, "customer_count": count}
-    finally:
-        db.close()
+def health(db: Session = Depends(get_db)):
+    from models import Customer
+    count = db.query(Customer).count()
+    return {"status": "ok", "db_seeded": count > 0, "customer_count": count}

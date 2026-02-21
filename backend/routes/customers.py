@@ -1,5 +1,6 @@
 from datetime import date
-from fastapi import APIRouter, Depends
+from typing import Annotated
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from models import Customer, Invoice, Setting
@@ -81,3 +82,33 @@ def get_customer_settings(customer_id: int, db: Session = Depends(get_db)):
     for s in customer_settings:
         merged[s.key] = s
     return [SettingOut.model_validate(s) for s in merged.values()]
+
+
+@router.patch("/{customer_id}/settings", response_model=list[SettingOut])
+def update_customer_settings(
+    customer_id: int,
+    updates: Annotated[dict[str, str], Body()],
+    db: Session = Depends(get_db),
+):
+    """
+    Upsert customer-specific settings. Pass a JSON object of key/value pairs.
+    Creates new settings or overwrites existing ones.
+    Returns the full merged settings view after update.
+    """
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    for key, value in updates.items():
+        existing = (
+            db.query(Setting)
+            .filter(Setting.scope == "customer", Setting.customer_id == customer_id, Setting.key == key)
+            .first()
+        )
+        if existing:
+            existing.value = value
+        else:
+            db.add(Setting(scope="customer", customer_id=customer_id, key=key, value=value))
+
+    db.commit()
+    return get_customer_settings(customer_id, db)
