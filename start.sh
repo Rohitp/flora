@@ -24,7 +24,7 @@ mkdir -p "$ROOT/logs"
 BACKEND_LOG="$ROOT/logs/backend.log"
 FRONTEND_LOG="$ROOT/logs/frontend.log"
 
-uv run uvicorn main:app --reload --port 8000 > "$BACKEND_LOG" 2>&1 &
+uv run uvicorn main:app --reload --port 8000 2>&1 | tee "$BACKEND_LOG" &
 BACKEND_PID=$!
 echo "  Backend PID: $BACKEND_PID  →  tail -f logs/backend.log"
 
@@ -48,7 +48,7 @@ if [ ! -d node_modules ]; then
   pnpm install
 fi
 
-pnpm dev > "$FRONTEND_LOG" 2>&1 &
+pnpm dev 2>&1 | tee "$FRONTEND_LOG" &
 FRONTEND_PID=$!
 echo "  Frontend PID: $FRONTEND_PID  →  tail -f logs/frontend.log"
 
