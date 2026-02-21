@@ -108,7 +108,7 @@ def parse_and_schedule(
 
     response = client.messages.create(
         model="claude-opus-4-6",
-        max_tokens=8192,
+        max_tokens=16000,
         system=RULES_AGENT_SYSTEM,
         messages=[{
             "role": "user",
