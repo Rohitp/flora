@@ -116,7 +116,7 @@ export function AutomationsPage() {
         <p className="mt-1 text-sm text-muted-foreground">Configure collection automation rules and schedules</p>
       </div>
 
-      <ScrollArea className="flex-1">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="px-8 py-6">
           {/* Upload bar */}
           <div className="flex items-center justify-between rounded-xl border border-dashed border-border bg-muted/20 px-5 py-3">
@@ -186,7 +186,7 @@ export function AutomationsPage() {
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }

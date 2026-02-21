@@ -100,9 +100,6 @@ export function DashboardPage() {
             AI Agent is active — monitoring inbox and adjusting schedules in real time
           </span>
         </div>
-        <a href="/inbox" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-          View Activity Log
-        </a>
       </div>
 
       <div className="border-b border-border px-8 py-6">

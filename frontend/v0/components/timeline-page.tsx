@@ -392,7 +392,7 @@ export function TimelinePage() {
       )}
 
       {/* Timeline */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-8 py-8">
           {loading ? (
             <div className="flex items-center justify-center py-20">
@@ -421,7 +421,7 @@ export function TimelinePage() {
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }
