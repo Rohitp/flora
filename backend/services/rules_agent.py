@@ -121,6 +121,13 @@ def parse_and_schedule(
 
     raw = response.content[0].text.strip()
 
+    # Write raw response to debug file
+    import pathlib
+    debug_path = pathlib.Path(__file__).parent.parent.parent / "logs" / "rules_agent_raw.txt"
+    debug_path.parent.mkdir(exist_ok=True)
+    debug_path.write_text(raw)
+    print(f"[rules_agent] Raw response written to {debug_path} ({len(raw)} chars, stop_reason={response.stop_reason})")
+
     # Strip markdown fences if Claude added them despite instructions
     if raw.startswith("```"):
         raw = raw.split("```")[1]

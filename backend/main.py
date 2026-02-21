@@ -1,10 +1,20 @@
+import logging
 import os
+import traceback
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger("flora")
 
 from sqlalchemy.orm import Session
 from database import engine, SessionLocal, Base, get_db
@@ -47,6 +57,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    tb = traceback.format_exc()
+    log.error("Unhandled exception on %s %s\n%s", request.method, request.url.path, tb)
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
+
 
 # Routers
 app.include_router(customers.router)

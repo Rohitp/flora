@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+
 echo ""
 echo "╔══════════════════════════════════╗"
 echo "║        Flora AR Prototype        ║"
@@ -9,7 +11,7 @@ echo ""
 
 # Backend
 echo "▶ Starting backend on http://localhost:8000"
-cd "$(dirname "$0")/backend"
+cd "$ROOT/backend"
 
 if [ ! -f .env ]; then
   echo "  ⚠ No .env found — copying .env.example (fill in your API keys)"
@@ -18,9 +20,13 @@ fi
 
 uv sync -q
 
-uv run uvicorn main:app --reload --port 8000 &
+mkdir -p "$ROOT/logs"
+BACKEND_LOG="$ROOT/logs/backend.log"
+FRONTEND_LOG="$ROOT/logs/frontend.log"
+
+uv run uvicorn main:app --reload --port 8000 > "$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
-echo "  Backend PID: $BACKEND_PID"
+echo "  Backend PID: $BACKEND_PID  →  tail -f logs/backend.log"
 
 # Wait for backend to be ready
 echo "  Waiting for backend..."
@@ -35,22 +41,25 @@ done
 # Frontend
 echo ""
 echo "▶ Starting frontend on http://localhost:3000"
-cd "$(dirname "$0")/frontend/v0"
+cd "$ROOT/frontend/v0"
 
 if [ ! -d node_modules ]; then
   echo "  Installing dependencies..."
   pnpm install
 fi
 
-pnpm dev &
+pnpm dev > "$FRONTEND_LOG" 2>&1 &
 FRONTEND_PID=$!
-echo "  Frontend PID: $FRONTEND_PID"
+echo "  Frontend PID: $FRONTEND_PID  →  tail -f logs/frontend.log"
 
 echo ""
 echo "✓ Both processes running"
 echo "  Frontend: http://localhost:3000"
 echo "  Backend:  http://localhost:8000"
 echo "  API docs: http://localhost:8000/docs"
+echo ""
+echo "  Logs: tail -f logs/backend.log"
+echo "        tail -f logs/frontend.log"
 echo ""
 echo "Press Ctrl+C to stop both"
 
