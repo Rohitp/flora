@@ -1,0 +1,13 @@
+name,day_offset,audience,type,frequency
+Soft Reminder - Before Due Date,-7,Customer,email,Once
+Due Date Reminder,0,Customer,email,Once
+Invoice Due by 1 day,1,Customer,email,Once
+Invoice Due by 5 days,5,Customer,email,Daily
+Invoice Due by 10 days,10,Customer,email,Daily
+Invoice Due by 15 days,15,Customer,email,Daily
+Internal Escalation - 15 days,15,Internal,escalation,Once
+Invoice Due by 20 days,20,Customer,email,Daily
+Invoice Due by 25 days,25,Customer,email,Daily
+Internal Escalation - 30 days,30,Internal,escalation,Once
+Invoice Due by 30 days,30,Customer,email,Once
+Final Notice - 45 days,45,Customer,email,Once
