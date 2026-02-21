@@ -18,7 +18,6 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { api, type Customer, type InvoiceSchedule, type ScheduledAction } from "@/lib/api"
 
 function formatCurrency(amount: number) {
@@ -328,23 +327,67 @@ export function TimelinePage() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-background">
-      {/* Header */}
-      <div className="border-b border-border px-8 py-6">
-        <div className="flex items-center justify-between">
+    <div className="flex h-full overflow-hidden bg-background">
+      {/* Customer list sidebar */}
+      <div className="flex h-full w-[260px] shrink-0 flex-col overflow-hidden border-r border-border bg-card">
+        <div className="border-b border-border px-5 py-4">
+          <h1 className="text-sm font-semibold text-foreground">Invoices</h1>
+          <p className="text-xs text-muted-foreground">Collection timeline by customer</p>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border">
+          {customers.map(c => {
+            const inv = c.invoices[0]
+            const isSelected = c.id === selectedCustomerId
+            return (
+              <button
+                key={c.id}
+                onClick={() => setSelectedCustomerId(c.id)}
+                className={cn(
+                  "flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors",
+                  isSelected ? "bg-muted/80" : "hover:bg-muted/40",
+                )}
+              >
+                <div className={cn(
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-card",
+                  c.color,
+                )}>
+                  {c.initials}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {inv && (
+                      <span className="font-mono text-[11px] text-muted-foreground">{inv.invoice_number}</span>
+                    )}
+                    {inv?.days_overdue && inv.days_overdue > 0 ? (
+                      <span className="text-[11px] text-destructive">{inv.days_overdue}d overdue</span>
+                    ) : null}
+                  </div>
+                  <p className="text-xs font-semibold text-destructive mt-0.5">
+                    {formatCurrency(c.total_outstanding)}
+                  </p>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Timeline panel */}
+      <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
+        {/* Customer header */}
+        <div className="border-b border-border px-8 py-5">
           <div className="flex items-center gap-3">
             {selectedCustomer && (
               <div className={cn(
-                "flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-card",
+                "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-card",
                 selectedCustomer.color,
               )}>
                 {selectedCustomer.initials}
               </div>
             )}
             <div>
-              <h1 className="text-xl font-semibold tracking-tight text-foreground">
-                {selectedCustomer?.name ?? "—"}
-              </h1>
+              <h2 className="text-base font-semibold text-foreground">{selectedCustomer?.name ?? "—"}</h2>
               <div className="mt-0.5 flex items-center gap-3">
                 {invoice && (
                   <>
@@ -365,61 +408,51 @@ export function TimelinePage() {
               </div>
             </div>
           </div>
-
-          <select
-            value={selectedCustomerId ?? ""}
-            onChange={e => setSelectedCustomerId(Number(e.target.value))}
-            className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
-          >
-            {customers.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
         </div>
-      </div>
 
-      {/* AI modification banner */}
-      {aiModified && (
-        <div className="flex items-center justify-between border-b border-border bg-indigo-50/60 px-8 py-2.5">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
-            <span className="text-xs text-indigo-700">Schedule modified by AI agent</span>
+        {/* AI modification banner */}
+        {aiModified && (
+          <div className="flex items-center justify-between border-b border-border bg-indigo-50/60 px-8 py-2.5">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
+              <span className="text-xs text-indigo-700">Schedule modified by AI agent</span>
+            </div>
+            <a href="/inbox" className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 transition-colors">
+              View Inbox Thread <ExternalLink className="h-3 w-3" />
+            </a>
           </div>
-          <a href="/inbox" className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 transition-colors">
-            View Inbox Thread <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
-      )}
+        )}
 
-      {/* Timeline */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-8 py-8">
-          {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            </div>
-          ) : schedule && schedule.scheduled_actions.length > 0 ? (
-            <>
-              <div className="mb-6">
-                <h2 className="text-sm font-semibold text-foreground">Collection Timeline</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Showing all scheduled and completed actions for {invoice?.invoice_number}
-                </p>
+        {/* Timeline */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-8 py-8">
+            {loading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
               </div>
-              {schedule.scheduled_actions.map((action, i) => (
-                <TimelineNode
-                  key={action.id}
-                  action={action}
-                  isLast={i === schedule.scheduled_actions.length - 1}
-                />
-              ))}
-            </>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <Clock className="h-8 w-8 text-muted-foreground/40" />
-              <p className="mt-3 text-sm text-muted-foreground">No schedule yet for this customer</p>
-            </div>
-          )}
+            ) : schedule && schedule.scheduled_actions.length > 0 ? (
+              <>
+                <div className="mb-6">
+                  <h2 className="text-sm font-semibold text-foreground">Collection Timeline</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Showing all scheduled and completed actions for {invoice?.invoice_number}
+                  </p>
+                </div>
+                {schedule.scheduled_actions.map((action, i) => (
+                  <TimelineNode
+                    key={action.id}
+                    action={action}
+                    isLast={i === schedule.scheduled_actions.length - 1}
+                  />
+                ))}
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <Clock className="h-8 w-8 text-muted-foreground/40" />
+                <p className="mt-3 text-sm text-muted-foreground">No schedule yet for this customer</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

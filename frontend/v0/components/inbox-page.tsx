@@ -3,12 +3,11 @@
 import { useState, useEffect, useCallback } from "react"
 import {
   Search, Send, ArrowRight, Bot, Pause, MoreHorizontal,
-  Sparkles, X, CalendarClock, Mail, RefreshCw, Zap,
+  Sparkles, X, CalendarClock, Mail, RefreshCw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { api, type InboxMessage, type Customer } from "@/lib/api"
 
 function formatCurrency(amount: number) {
@@ -66,7 +65,7 @@ function ThreadList({
   })
 
   return (
-    <div className="flex h-full w-[360px] shrink-0 flex-col border-r border-border bg-card">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-r border-border bg-card">
       {/* Status tabs */}
       <div className="flex items-center gap-1 border-b border-border px-3 py-2.5 flex-wrap">
         {(["all", ...STATUS_TABS] as Tab[]).map(tab => (
@@ -108,7 +107,7 @@ function ThreadList({
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center px-6">
             <Mail className="h-8 w-8 text-muted-foreground/30" />
@@ -173,7 +172,7 @@ function ThreadList({
             })}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   )
 }
@@ -409,88 +408,6 @@ function CustomerPanel({ message, customers }: { message: InboxMessage; customer
   )
 }
 
-// ---- Simulator panel ----
-function SimulatorPanel({
-  customers, onSimulated,
-}: {
-  customers: Customer[]
-  onSimulated: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [customerId, setCustomerId] = useState<number | null>(null)
-  const [body, setBody] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (customers.length > 0 && customerId === null) {
-      setCustomerId(customers[0].id)
-    }
-  }, [customers, customerId])
-
-  const handleSimulate = async () => {
-    if (!customerId || !body.trim()) return
-    setLoading(true)
-    setError(null)
-    try {
-      await api.inbox.simulate(customerId, body)
-      setBody("")
-      setOpen(false)
-      onSimulated()
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Simulation failed")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="border-t border-border">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex w-full items-center justify-between px-4 py-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <Zap className="h-3.5 w-3.5" />
-          Simulate customer message
-        </div>
-        <span>{open ? "▲" : "▼"}</span>
-      </button>
-
-      {open && (
-        <div className="border-t border-border px-4 py-3 space-y-3">
-          <select
-            value={customerId ?? ""}
-            onChange={e => setCustomerId(Number(e.target.value))}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
-          >
-            {customers.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <textarea
-            value={body}
-            onChange={e => setBody(e.target.value)}
-            placeholder="e.g. I'll pay next Friday, cash is tight this month"
-            rows={3}
-            className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-ring"
-          />
-          {error && <p className="text-xs text-destructive">{error}</p>}
-          <Button
-            size="sm"
-            className="w-full gap-2"
-            onClick={handleSimulate}
-            disabled={loading || !body.trim()}
-          >
-            <Zap className="h-3.5 w-3.5" />
-            {loading ? "Processing…" : "Run through AI pipeline"}
-          </Button>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ---- Main page ----
 export function InboxPage() {
   const [messages, setMessages] = useState<InboxMessage[]>([])
@@ -536,18 +453,15 @@ export function InboxPage() {
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
-      {/* Thread list + simulator */}
-      <div className="flex h-full flex-col" style={{ width: 360 }}>
-        <div className="flex-1 min-h-0">
-          <ThreadList
-            messages={messages}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            filter={filter}
-            onFilterChange={setFilter}
-          />
-        </div>
-        <SimulatorPanel customers={customers} onSimulated={fetchAll} />
+      {/* Thread list */}
+      <div className="flex flex-col overflow-hidden shrink-0" style={{ width: 360 }}>
+        <ThreadList
+          messages={messages}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          filter={filter}
+          onFilterChange={setFilter}
+        />
       </div>
 
       {/* Email view */}
