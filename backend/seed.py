@@ -45,7 +45,7 @@ CUSTOMERS = [
         "color": "bg-blue-600",
         "invoice_number": "IN-1045",
         "amount": 12500.00,
-        "due_offset": +4,  # due in 4 days — current
+        "due_offset": +14,  # due in 14 days — current
     },
     {
         "name": "GlobalTech Solutions",
@@ -54,7 +54,44 @@ CUSTOMERS = [
         "color": "bg-emerald-600",
         "invoice_number": "IN-1030",
         "amount": 8750.00,
-        "due_offset": -37,  # 37 days overdue
+        "due_offset": +3,  # due in 3 days — current
+    },
+    # Live demo accounts — real email senders matched to these customers
+    {
+        "name": "Rajaraman and Daughter Finance",
+        "email": "rr@chargebee.com",
+        "initials": "RD",
+        "color": "bg-orange-600",
+        "invoice_number": "IN-1050",
+        "amount": 45000.00,
+        "due_offset": -5,  # 5 days overdue
+    },
+    {
+        "name": "Saravana Technology Services",
+        "email": "kps@chargebee.com",
+        "initials": "ST",
+        "color": "bg-indigo-600",
+        "invoice_number": "IN-1055",
+        "amount": 28500.00,
+        "due_offset": +10,  # due in 10 days — current
+    },
+    {
+        "name": "Ankhmorprok Antiquities",
+        "email": "rohit.p@chargebee.com",
+        "initials": "AA",
+        "color": "bg-pink-600",
+        "invoice_number": "IN-1060",
+        "amount": 15750.00,
+        "due_offset": -20,  # 20 days overdue
+    },
+    {
+        "name": "Mahesh Pav Bhaji Company",
+        "email": "maheshwar.v@chargebee.com",
+        "initials": "MP",
+        "color": "bg-amber-600",
+        "invoice_number": "IN-1065",
+        "amount": 9200.00,
+        "due_offset": +5,  # due in 5 days — current
     },
 ]
 
@@ -84,6 +121,21 @@ CUSTOMER_SETTINGS = {
     "NovaTech Corp": [
         ("preferred_contact_time", "morning"),
         ("agent_notes", "Key account. Handle with care. CC account manager on all escalations."),
+    ],
+    "Rajaraman and Daughter Finance": [
+        ("agent_notes", "Owner Rajaraman handles payments personally. Family business — be respectful and formal in tone."),
+        ("preferred_contact_time", "morning"),
+    ],
+    "Saravana Technology Services": [
+        ("agent_notes", "Finance contact is KPS. Fast payer historically — likely an oversight if overdue. Friendly tone appropriate."),
+    ],
+    "Ankhmorprok Antiquities": [
+        ("agent_notes", "Rohit handles AR directly. Unusual business name — do not abbreviate. Payment often delayed but always clears."),
+        ("dispute_route", "finance_review"),
+    ],
+    "Mahesh Pav Bhaji Company": [
+        ("agent_notes", "Maheshwar is the owner and finance contact. Small business — be empathetic. Prefers short, direct emails."),
+        ("preferred_contact_time", "afternoon"),
     ],
 }
 
@@ -133,4 +185,4 @@ def seed(db) -> None:
                 db.add(Setting(scope="customer", customer_id=customer.id, key=key, value=value))
 
     db.commit()
-    print("[seed] Seeded 5 customers with invoices and settings.")
+    print(f"[seed] Seeded {len(CUSTOMERS)} customers with invoices and settings.")

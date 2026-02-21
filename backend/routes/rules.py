@@ -1,5 +1,4 @@
-import io
-from datetime import date, datetime
+from datetime import date
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
@@ -8,16 +7,6 @@ from schemas import RuleOut, UploadRulesOut
 from services.rules_agent import parse_and_schedule
 
 router = APIRouter(prefix="/rules", tags=["rules"])
-
-
-def _file_to_text(content: bytes, filename: str) -> str:
-    """Convert uploaded file bytes to plain text for Claude."""
-    if filename.endswith((".xlsx", ".xls")):
-        import pandas as pd
-        df = pd.read_excel(io.BytesIO(content))
-        return df.to_csv(index=False)
-    # CSV, txt, or anything else — treat as UTF-8 text
-    return content.decode("utf-8", errors="replace")
 
 
 def _apply_agent_output(db: Session, result: dict) -> tuple[int, int]:
@@ -89,10 +78,7 @@ def list_rules(db: Session = Depends(get_db)):
 @router.post("/upload", response_model=UploadRulesOut)
 async def upload_rules(file: UploadFile = File(...), db: Session = Depends(get_db)):
     content = await file.read()
-    filename = file.filename or "rules.csv"
-
-    # Convert to text for Claude
-    file_text = _file_to_text(content, filename)
+    filename = file.filename or "rules.pdf"
 
     # Build invoice context for the agent
     invoices_raw = (
@@ -111,7 +97,7 @@ async def upload_rules(file: UploadFile = File(...), db: Session = Depends(get_d
 
     try:
         result = parse_and_schedule(
-            file_text=file_text,
+            file_content=content,
             invoices=invoice_context,
             today=date.today(),
         )

@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import ScheduledAction, InboxMessage, ActionLog, Rule, Invoice, Setting, Customer
 from schemas import ResetOut
-from seed import seed
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 

@@ -47,7 +47,7 @@ class Rule(Base):
     day_offset = Column(Integer, nullable=False)  # negative = before due date
     audience = Column(String, nullable=False)      # Customer | Internal
     type = Column(String, nullable=False)          # email | escalation
-    frequency = Column(String, default="Once")    # Once | Daily | Weekly
+    frequency = Column(String, default="Once")    # Once | Daily | Weekly | Monthly
     status = Column(String, default="active")     # active | paused
     created_at = Column(DateTime, default=datetime.utcnow)
 

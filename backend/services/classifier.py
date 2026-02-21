@@ -59,6 +59,12 @@ Classify the intent of this email."""
             messages=[{"role": "user", "content": user_message}],
         )
         raw = response.content[0].text.strip()
+        # Strip markdown fences if Claude added them despite instructions
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
         result = json.loads(raw)
         # Ensure all expected keys exist
         return {

@@ -9,7 +9,7 @@ Steps:
 5. Persist everything to DB
 """
 import re
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from sqlalchemy.orm import Session
 from models import Customer, Invoice, InboxMessage, Setting, ActionLog
 from services.classifier import classify_email
@@ -105,7 +105,7 @@ def process_email(
     actions_taken = []
     if customer and invoice:
         if intent == "will_pay_later":
-            pd = promised_date or (date.today() + __import__('datetime').timedelta(days=7))
+            pd = promised_date or (date.today() + timedelta(days=7))
             actions_taken = scheduler.apply_will_pay_later(db, invoice, inbox_id=0, promised_date=pd)
         elif intent == "already_paid":
             actions_taken = scheduler.apply_already_paid(db, invoice, inbox_id=0)

@@ -11,3 +11,4 @@ Invoice Due by 25 days,25,Customer,email,Daily
 Internal Escalation - 30 days,30,Internal,escalation,Once
 Invoice Due by 30 days,30,Customer,email,Once
 Final Notice - 45 days,45,Customer,email,Once
+Reminder - 60 days,60,Customer,email,Once

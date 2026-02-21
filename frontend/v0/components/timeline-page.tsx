@@ -226,7 +226,7 @@ function EmptyState({ onUploaded }: { onUploaded: () => void }) {
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,.xlsx,.xls,.txt"
+          accept=".pdf"
           className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
         />
