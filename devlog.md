@@ -76,6 +76,24 @@ The client will be typed — each endpoint has a corresponding TypeScript type t
 
 ---
 
+## 2026-02-21 — Model: claude-opus-4-6 across all AI calls
+
+All three Claude API calls (rules agent, intent classifier, draft reply generator) use `claude-opus-4-6` — the most capable model. Demo is low volume so cost is not a factor. Better reasoning = more accurate intent classification, better-quality draft replies, and more robust rules parsing from arbitrary file formats.
+
+---
+
+## 2026-02-21 — Gmail is bidirectional: IMAP receive + SMTP send
+
+The demo loop is: send real email → appears classified in app → hit Send → reply lands in sender's real inbox. This is the lightbulb moment for the audience.
+
+- IMAP poller (`services/gmail_poller.py`): already built — polls every 10s
+- SMTP sender (`services/gmail_sender.py`): same credentials, `smtp.gmail.com:587`, TLS
+- `POST /inbox/{ticket_id}/send-reply`: sends draft reply (or custom body) to original sender, marks thread closed, logs action
+- Both use `GMAIL_USER` + `GMAIL_APP_PASSWORD` from `.env`
+- `/inbox/simulate` remains as backup — identical pipeline output, no real email needed
+
+---
+
 ## 2026-02-21 — Rules upload is AI-driven, not algorithmic
 
 Original plan used pandas to parse columns and deterministic code to compute `due_date + day_offset`. Replaced entirely with a Claude agent call.

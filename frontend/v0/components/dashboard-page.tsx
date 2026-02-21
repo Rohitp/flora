@@ -1,22 +1,14 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import {
-  DollarSign,
-  Clock,
-  AlertTriangle,
-  AlertCircle,
-  Handshake,
-  ShieldAlert,
-  Bot,
-  Send,
-  ArrowUpRight,
-  Pause,
-  Tag,
-  PenLine,
+  DollarSign, Clock, AlertTriangle, AlertCircle,
+  Handshake, ShieldAlert, Bot, Send, ArrowUpRight,
+  Pause, Tag, PenLine,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
-import { dashboardKPIs, topCustomers, recentActivity } from "@/lib/data"
+import { api, type DashboardSummary, type Customer, type ActionLog } from "@/lib/api"
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-US", {
@@ -27,116 +19,76 @@ function formatCurrency(amount: number) {
   }).format(amount)
 }
 
-const kpiCards = [
-  {
-    label: "Total Outstanding",
-    value: dashboardKPIs.totalOutstanding,
-    icon: DollarSign,
-    color: "text-foreground",
-    valueColor: "text-foreground",
-    bgColor: "bg-card",
-  },
-  {
-    label: "Current",
-    value: dashboardKPIs.current,
-    icon: Clock,
-    color: "text-chart-1",
-    valueColor: "text-chart-1",
-    bgColor: "bg-chart-1/5",
-  },
-  {
-    label: "Overdue 1-30 days",
-    value: dashboardKPIs.overdue1to30,
-    icon: AlertTriangle,
-    color: "text-chart-3",
-    valueColor: "text-chart-3",
-    bgColor: "bg-chart-3/5",
-  },
-  {
-    label: "Overdue 30+ days",
-    value: dashboardKPIs.overdue30plus,
-    icon: AlertCircle,
-    color: "text-destructive",
-    valueColor: "text-destructive",
-    bgColor: "bg-destructive/5",
-  },
-  {
-    label: "Promise to Pay",
-    value: dashboardKPIs.promiseToPay,
-    icon: Handshake,
-    color: "text-violet-600",
-    valueColor: "text-violet-600",
-    bgColor: "bg-violet-600/5",
-  },
-  {
-    label: "Disputes",
-    value: dashboardKPIs.disputes,
-    icon: ShieldAlert,
-    color: "text-orange-500",
-    valueColor: "text-orange-500",
-    bgColor: "bg-orange-500/5",
-  },
-]
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    current: "bg-chart-1/10 text-chart-1 border-chart-1/20",
-    overdue: "bg-destructive/10 text-destructive border-destructive/20",
-    p2p: "bg-chart-2/10 text-chart-2 border-chart-2/20",
-    dispute: "bg-chart-3/10 text-chart-3 border-chart-3/20",
-    closed: "bg-muted text-muted-foreground border-border",
-  }
-  const labels: Record<string, string> = {
-    current: "Current",
-    overdue: "Overdue",
-    p2p: "Promise to Pay",
-    dispute: "Dispute",
-    closed: "Closed",
-  }
-  return (
-    <Badge
-      variant="outline"
-      className={cn("text-[11px] font-medium", styles[status])}
-    >
-      {labels[status]}
-    </Badge>
-  )
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return "just now"
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
 }
 
-const agentBadges: Record<string, { label: string; color: string }> = {
-  "NovaTech Corp": { label: "Reminders Active", color: "bg-chart-1/10 text-chart-1 border-chart-1/20" },
-  "Pinnacle Corp": { label: "Paused -- P2P", color: "bg-success/10 text-success border-success/20" },
-  "Meridian LLC": { label: "Escalated", color: "bg-destructive/10 text-destructive border-destructive/20" },
-  "Acme Inc": { label: "Reminders Active", color: "bg-chart-1/10 text-chart-1 border-chart-1/20" },
-  "GlobalTech Solutions": { label: "Disputed", color: "bg-destructive/10 text-destructive border-destructive/20" },
-}
-
-function getActivityIcon(action: string) {
-  if (action.toLowerCase().includes("paused"))
-    return { icon: Pause, color: "text-amber-500", bg: "bg-amber-500/10" }
-  if (action.toLowerCase().includes("sent reminder"))
-    return { icon: Send, color: "text-blue-700", bg: "bg-blue-700/10" }
-  if (action.toLowerCase().includes("escalation"))
-    return { icon: ArrowUpRight, color: "text-red-500", bg: "bg-red-500/10" }
-  if (action.toLowerCase().includes("auto-classified"))
-    return { icon: Tag, color: "text-violet-600", bg: "bg-violet-600/10" }
-  if (action.toLowerCase().includes("draft"))
-    return { icon: PenLine, color: "text-emerald-600", bg: "bg-emerald-600/10" }
-  if (action.toLowerCase().includes("follow-up"))
-    return { icon: Send, color: "text-teal-500", bg: "bg-teal-500/10" }
+function getActivityIcon(actionType: string, description: string) {
+  if (actionType === "pause")    return { icon: Pause,       color: "text-amber-500",   bg: "bg-amber-500/10" }
+  if (actionType === "replied")  return { icon: Send,        color: "text-blue-700",    bg: "bg-blue-700/10" }
+  if (actionType === "escalate") return { icon: ArrowUpRight,color: "text-red-500",     bg: "bg-red-500/10" }
+  if (actionType === "classify") return { icon: Tag,         color: "text-violet-600",  bg: "bg-violet-600/10" }
+  if (actionType === "draft")    return { icon: PenLine,     color: "text-emerald-600", bg: "bg-emerald-600/10" }
+  if (actionType === "schedule") return { icon: Send,        color: "text-teal-500",    bg: "bg-teal-500/10" }
   return { icon: Bot, color: "text-muted-foreground", bg: "bg-muted" }
 }
 
+const STATUS_COLORS: Record<string, string> = {
+  current:  "bg-chart-1/10 text-chart-1 border-chart-1/20",
+  overdue:  "bg-destructive/10 text-destructive border-destructive/20",
+  paused:   "bg-chart-2/10 text-chart-2 border-chart-2/20",
+  disputed: "bg-chart-3/10 text-chart-3 border-chart-3/20",
+  resolved: "bg-muted text-muted-foreground border-border",
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  current: "Current", overdue: "Overdue", paused: "Promise to Pay",
+  disputed: "Dispute", resolved: "Closed",
+}
+
 export function DashboardPage() {
-  console.log("[v0] DashboardPage rendering, data:", {
-    kpiCount: kpiCards.length,
-    customerCount: topCustomers.length,
-    activityCount: recentActivity.length,
-  })
+  const [summary, setSummary] = useState<DashboardSummary | null>(null)
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([api.dashboard.summary(), api.customers.list()])
+      .then(([s, c]) => { setSummary(s); setCustomers(c) })
+      .finally(() => setLoading(false))
+
+    const interval = setInterval(() => {
+      Promise.all([api.dashboard.summary(), api.customers.list()])
+        .then(([s, c]) => { setSummary(s); setCustomers(c) })
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const kpis = summary ? [
+    { label: "Total Outstanding",  value: summary.kpis.total_outstanding, icon: DollarSign,    color: "text-foreground",    bg: "bg-card" },
+    { label: "Current",            value: summary.kpis.current,           icon: Clock,         color: "text-chart-1",       bg: "bg-chart-1/5" },
+    { label: "Overdue 1-30 days",  value: summary.kpis.overdue_1_to_30,  icon: AlertTriangle, color: "text-chart-3",       bg: "bg-chart-3/5" },
+    { label: "Overdue 30+ days",   value: summary.kpis.overdue_30_plus,  icon: AlertCircle,   color: "text-destructive",   bg: "bg-destructive/5" },
+    { label: "Promise to Pay",     value: summary.kpis.promise_to_pay,   icon: Handshake,     color: "text-violet-600",    bg: "bg-violet-600/5" },
+    { label: "Disputes",           value: summary.kpis.disputes,          icon: ShieldAlert,   color: "text-orange-500",    bg: "bg-orange-500/5" },
+  ] : []
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full flex-col overflow-auto bg-background">
-      {/* Active Agent Banner */}
+      {/* Agent banner */}
       <div className="flex items-center justify-between border-b border-border bg-muted/40 px-8 py-2">
         <div className="flex items-center gap-2.5">
           <span className="relative flex h-2 w-2">
@@ -147,39 +99,27 @@ export function DashboardPage() {
             AI Agent is active — monitoring inbox and adjusting schedules in real time
           </span>
         </div>
-        <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+        <a href="/inbox" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
           View Activity Log
         </a>
       </div>
 
       <div className="border-b border-border px-8 py-6">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          Dashboard
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          AR portfolio health at a glance
-        </p>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">Dashboard</h1>
+        <p className="mt-1 text-sm text-muted-foreground">AR portfolio health at a glance</p>
       </div>
 
       <div className="flex-1 overflow-auto px-8 py-6">
-        {/* KPI Cards */}
+        {/* KPIs */}
         <div className="grid grid-cols-6 gap-4">
-          {kpiCards.map((kpi) => (
-            <div
-              key={kpi.label}
-              className="rounded-xl border border-border bg-card p-5"
-            >
+          {kpis.map(kpi => (
+            <div key={kpi.label} className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center gap-2">
-                <div
-                  className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-lg",
-                    kpi.bgColor
-                  )}
-                >
+                <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg", kpi.bg)}>
                   <kpi.icon className={cn("h-4 w-4", kpi.color)} />
                 </div>
               </div>
-              <p className={cn("mt-3 text-2xl font-bold tracking-tight", kpi.valueColor)}>
+              <p className={cn("mt-3 text-2xl font-bold tracking-tight", kpi.color)}>
                 {formatCurrency(kpi.value)}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">{kpi.label}</p>
@@ -191,60 +131,35 @@ export function DashboardPage() {
         <div className="mt-6 grid grid-cols-5 gap-6">
           {/* Top customers */}
           <div className="col-span-3 rounded-xl border border-border bg-card">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">
-                  Top Customers by Outstanding
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Highest outstanding balances
-                </p>
-              </div>
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="text-sm font-semibold text-foreground">Top Customers by Outstanding</h2>
+              <p className="text-xs text-muted-foreground">Highest outstanding balances</p>
             </div>
             <div className="divide-y divide-border">
-              {topCustomers.map((customer) => {
-                const agentBadge = agentBadges[customer.name]
+              {customers.map(customer => {
+                const inv = customer.invoices[0]
                 return (
-                  <div
-                    key={customer.name}
-                    className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-muted/50"
-                  >
-                    <div
-                      className={cn(
-                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-card",
-                        customer.color
-                      )}
-                    >
+                  <div key={customer.id} className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-muted/50">
+                    <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-card", customer.color)}>
                       {customer.initials}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">
-                        {customer.name}
-                      </p>
+                      <p className="text-sm font-medium text-foreground">{customer.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {customer.invoiceId}
-                        </span>
+                        <span className="font-mono text-xs text-muted-foreground">{inv?.invoice_number}</span>
                         <span className="text-xs text-muted-foreground">
-                          {"daysOverdue" in customer && customer.daysOverdue
-                            ? `${customer.daysOverdue}d overdue`
-                            : `Due in ${customer.daysUntilDue}d`}
+                          {inv?.days_overdue ? `${inv.days_overdue}d overdue` : inv?.days_until_due ? `Due in ${inv.days_until_due}d` : ""}
                         </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <StatusBadge status={customer.status} />
-                      {agentBadge && (
-                        <Badge
-                          variant="outline"
-                          className={cn("text-[10px] font-medium gap-1", agentBadge.color)}
-                        >
-                          <Bot className="h-3 w-3" />
-                          {agentBadge.label}
+                      {inv && (
+                        <Badge variant="outline" className={cn("text-[11px] font-medium", STATUS_COLORS[inv.status] ?? STATUS_COLORS.current)}>
+                          {STATUS_LABELS[inv.status] ?? inv.status}
                         </Badge>
                       )}
                       <span className="text-sm font-semibold tabular-nums text-foreground">
-                        {formatCurrency(customer.amount)}
+                        {formatCurrency(customer.total_outstanding)}
                       </span>
                     </div>
                   </div>
@@ -255,47 +170,33 @@ export function DashboardPage() {
 
           {/* Activity feed */}
           <div className="col-span-2 rounded-xl border border-border bg-card">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">
-                  Recent AI Activity
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Automated actions taken
-                </p>
-              </div>
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="text-sm font-semibold text-foreground">Recent AI Activity</h2>
+              <p className="text-xs text-muted-foreground">Automated actions taken</p>
             </div>
             <div className="divide-y divide-border">
-              {recentActivity.map((activity) => {
-                const iconInfo = getActivityIcon(activity.action)
-                const IconComponent = iconInfo.icon
-                return (
-                  <div
-                    key={activity.id}
-                    className="flex gap-3 px-5 py-3.5 transition-colors hover:bg-muted/50"
-                  >
-                    <div
-                      className={cn(
-                        "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-                        iconInfo.bg
-                      )}
-                    >
-                      <IconComponent className={cn("h-3.5 w-3.5", iconInfo.color)} />
+              {(summary?.recent_activity ?? []).length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center px-5">
+                  <Bot className="h-7 w-7 text-muted-foreground/30" />
+                  <p className="mt-2 text-xs text-muted-foreground">No activity yet — upload rules and send an email to get started</p>
+                </div>
+              ) : (
+                (summary?.recent_activity ?? []).map(log => {
+                  const info = getActivityIcon(log.action_type, log.description)
+                  return (
+                    <div key={log.id} className="flex gap-3 px-5 py-3.5 transition-colors hover:bg-muted/50">
+                      <div className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", info.bg)}>
+                        <info.icon className={cn("h-3.5 w-3.5", info.color)} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground capitalize">{log.action_type}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{log.description}</p>
+                      </div>
+                      <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(log.created_at)}</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">
-                        {activity.action}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {activity.detail}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {activity.time}
-                    </span>
-                  </div>
-                )
-              })}
+                  )
+                })
+              )}
             </div>
           </div>
         </div>

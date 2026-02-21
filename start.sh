@@ -16,15 +16,9 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 
-if [ ! -d .venv ]; then
-  echo "  Creating Python virtual environment..."
-  uv venv
-fi
+uv sync -q
 
-source .venv/bin/activate
-uv pip install -q -r requirements.txt
-
-uvicorn main:app --reload --port 8000 &
+uv run uvicorn main:app --reload --port 8000 &
 BACKEND_PID=$!
 echo "  Backend PID: $BACKEND_PID"
 

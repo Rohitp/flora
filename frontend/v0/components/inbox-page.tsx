@@ -1,25 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
-  Search,
-  Send,
-  ArrowRight,
-  Bot,
-  Pause,
-  MoreHorizontal,
-  Sparkles,
-  X,
-  CalendarClock,
-  Mail,
-  RefreshCw,
+  Search, Send, ArrowRight, Bot, Pause, MoreHorizontal,
+  Sparkles, X, CalendarClock, Mail, RefreshCw, Zap,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Switch } from "@/components/ui/switch"
-import { threads, customers, type EmailThread, type ThreadStatus } from "@/lib/data"
+import { api, type InboxMessage, type Customer } from "@/lib/api"
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-US", {
@@ -30,98 +20,77 @@ function formatCurrency(amount: number) {
   }).format(amount)
 }
 
-type FilterTab = "all" | ThreadStatus
-
-const statusTabs: { label: string; value: FilterTab; count: number }[] = [
-  { label: "Open", value: "open", count: threads.filter((t) => t.status === "open").length },
-  { label: "P2P", value: "p2p", count: threads.filter((t) => t.status === "p2p").length },
-  { label: "Dispute", value: "dispute", count: threads.filter((t) => t.status === "dispute").length },
-  { label: "Bounced", value: "bounced", count: threads.filter((t) => t.status === "bounced").length },
-  { label: "Closed", value: "closed", count: threads.filter((t) => t.status === "closed").length },
-]
-
-// Intent badges per thread
-const threadIntents: Record<string, { label: string; color: string }> = {
-  t1: { label: "Payment Extension", color: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
-  t4: { label: "Unclassified", color: "bg-muted text-muted-foreground border-border" },
-  t6: { label: "Overdue Acknowledged", color: "bg-chart-1/10 text-chart-1 border-chart-1/20" },
-  t8: { label: "Payment on the Way", color: "bg-success/10 text-success border-success/20" },
-  t9: { label: "Unclassified", color: "bg-muted text-muted-foreground border-border" },
+const INTENT_STYLES: Record<string, { label: string; color: string }> = {
+  will_pay_later: { label: "Will Pay Later",  color: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
+  already_paid:   { label: "Already Paid",    color: "bg-success/10 text-success border-success/20" },
+  disputed:       { label: "Disputed",         color: "bg-destructive/10 text-destructive border-destructive/20" },
+  unclear:        { label: "Unclassified",     color: "bg-muted text-muted-foreground border-border" },
 }
 
-// Threads that the agent has already acted on
-const agentActedThreads = new Set(["t8", "t6"])
+const STATUS_TABS = ["open", "classified", "needs_review", "closed"] as const
+type Tab = typeof STATUS_TABS[number] | "all"
 
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return "just now"
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
+
+// ---- Thread list ----
 function ThreadList({
-  threads: threadsList,
-  selectedId,
-  onSelect,
-  filter,
-  onFilterChange,
+  messages, selectedId, onSelect, filter, onFilterChange,
 }: {
-  threads: EmailThread[]
-  selectedId: string
+  messages: InboxMessage[]
+  selectedId: string | null
   onSelect: (id: string) => void
-  filter: FilterTab
-  onFilterChange: (f: FilterTab) => void
+  filter: Tab
+  onFilterChange: (f: Tab) => void
 }) {
-  const [searchQuery, setSearchQuery] = useState("")
+  const [search, setSearch] = useState("")
 
-  const filtered = threadsList.filter((t) => {
-    const matchesStatus = filter === "all" || t.status === filter
-    const matchesSearch =
-      !searchQuery ||
-      t.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.subject.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchesStatus && matchesSearch
+  const counts = STATUS_TABS.reduce((acc, s) => {
+    acc[s] = messages.filter(m => m.status === s).length
+    return acc
+  }, {} as Record<string, number>)
+
+  const filtered = messages.filter(m => {
+    const matchStatus = filter === "all" || m.status === filter
+    const matchSearch = !search ||
+      (m.customer_name ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      m.subject.toLowerCase().includes(search.toLowerCase())
+    return matchStatus && matchSearch
   })
 
   return (
-    <div className="flex h-full w-[380px] shrink-0 flex-col border-r border-border bg-card">
-      {/* Filter tabs */}
-      <div className="flex items-center gap-1 border-b border-border px-3 py-2.5">
-        {statusTabs.map((tab) => (
+    <div className="flex h-full w-[360px] shrink-0 flex-col border-r border-border bg-card">
+      {/* Status tabs */}
+      <div className="flex items-center gap-1 border-b border-border px-3 py-2.5 flex-wrap">
+        {(["all", ...STATUS_TABS] as Tab[]).map(tab => (
           <button
-            key={tab.value}
-            onClick={() => onFilterChange(tab.value)}
+            key={tab}
+            onClick={() => onFilterChange(tab)}
             className={cn(
-              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-              filter === tab.value
+              "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors capitalize",
+              filter === tab
                 ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
-            <span className={cn(
-              "flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[10px] font-bold",
-              filter === tab.value
-                ? "bg-primary-foreground/20 text-primary-foreground"
-                : "bg-muted text-muted-foreground"
-            )}>
-              {tab.count}
-            </span>
-            {tab.label}
+            {tab !== "all" && (
+              <span className={cn(
+                "flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[10px] font-bold",
+                filter === tab ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground",
+              )}>
+                {counts[tab] ?? 0}
+              </span>
+            )}
+            {tab === "all" ? "All" : tab.replace("_", " ")}
           </button>
         ))}
-      </div>
-
-      {/* AI Toggle + Search */}
-      <div className="border-b border-border px-3 py-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Switch id="ai-toggle" />
-            <label
-              htmlFor="ai-toggle"
-              className="text-xs font-medium text-muted-foreground"
-            >
-              AI Recommendations
-            </label>
-          </div>
-          <select className="rounded-md border border-border bg-card px-2 py-1 text-xs text-muted-foreground">
-            <option>Anytime</option>
-            <option>Today</option>
-            <option>This week</option>
-          </select>
-        </div>
       </div>
 
       {/* Search */}
@@ -131,178 +100,165 @@ function ThreadList({
           <input
             type="text"
             placeholder="Search threads..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
           />
         </div>
       </div>
 
-      {/* Thread list */}
+      {/* Messages */}
       <ScrollArea className="flex-1">
-        <div className="divide-y divide-border">
-          {filtered.map((thread) => {
-            const intent = threadIntents[thread.id]
-            const hasAgentActed = agentActedThreads.has(thread.id)
-            return (
-              <button
-                key={thread.id}
-                onClick={() => onSelect(thread.id)}
-                className={cn(
-                  "relative flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors",
-                  selectedId === thread.id
-                    ? "bg-muted/80"
-                    : "hover:bg-muted/40",
-                  thread.unread && "border-l-2 border-l-accent"
-                )}
-              >
-                <div
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+            <Mail className="h-8 w-8 text-muted-foreground/30" />
+            <p className="mt-3 text-sm text-muted-foreground">No messages yet</p>
+            <p className="mt-1 text-xs text-muted-foreground/70">
+              Send an email to your demo Gmail address or use the simulator below
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {filtered.map(msg => {
+              const intent = msg.intent ? INTENT_STYLES[msg.intent] : null
+              return (
+                <button
+                  key={msg.id}
+                  onClick={() => onSelect(msg.ticket_id)}
                   className={cn(
-                    "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-card",
-                    thread.color
+                    "relative flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors",
+                    selectedId === msg.ticket_id ? "bg-muted/80" : "hover:bg-muted/40",
+                    msg.status === "open" && "border-l-2 border-l-accent",
                   )}
                 >
-                  {thread.initials}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className={cn(
-                        "truncate text-sm",
-                        thread.unread ? "font-semibold text-foreground" : "font-medium text-foreground"
+                  <div className={cn(
+                    "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-card",
+                    msg.customer_color ?? "bg-slate-500",
+                  )}>
+                    {msg.customer_initials ?? "?"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium text-foreground">
+                        {msg.customer_name ?? msg.from_email}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {timeAgo(msg.received_at)}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{msg.subject}</p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      {msg.invoice_number && (
+                        <Badge variant="outline" className="h-5 rounded-md border-border bg-muted/80 px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                          {msg.invoice_number}
+                        </Badge>
                       )}
-                    >
-                      {thread.company}
-                    </span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">
-                      {thread.timeAgo}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {thread.subject}
-                  </p>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    {thread.invoiceIds.length > 0 ? (
-                      thread.invoiceIds.length > 1 ? (
-                        <Badge
-                          variant="outline"
-                          className="h-5 rounded-md border-border bg-muted/80 px-1.5 font-mono text-[10px] font-medium text-muted-foreground"
-                        >
-                          {thread.invoiceIds.length} Invoices
+                      {msg.thread_count > 1 && (
+                        <Badge variant="outline" className="h-5 rounded-md border-border bg-muted/80 px-1.5 text-[10px] font-medium text-muted-foreground">
+                          {msg.thread_count} msgs
                         </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="h-5 rounded-md border-border bg-muted/80 px-1.5 font-mono text-[10px] font-medium text-muted-foreground"
-                        >
-                          {thread.invoiceIds[0]}
+                      )}
+                      {intent && (
+                        <Badge variant="outline" className={cn("h-5 rounded-md px-1.5 text-[10px] font-medium", intent.color)}>
+                          {intent.label}
                         </Badge>
-                      )
-                    ) : null}
-                    {intent && (
-                      <Badge
-                        variant="outline"
-                        className={cn("h-5 rounded-md px-1.5 text-[10px] font-medium", intent.color)}
-                      >
-                        {intent.label}
-                      </Badge>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
-                {/* Agent sparkle indicator */}
-                {hasAgentActed && (
-                  <Sparkles className="absolute right-3 top-3 h-3.5 w-3.5 text-accent" />
-                )}
-              </button>
-            )
-          })}
-        </div>
+                  {msg.draft_reply && (
+                    <Sparkles className="absolute right-3 top-3 h-3.5 w-3.5 text-accent" />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </ScrollArea>
     </div>
   )
 }
 
-function EmailView({ thread }: { thread: EmailThread }) {
-  const [replyText, setReplyText] = useState("")
+// ---- Email detail view ----
+function EmailView({
+  message, onReply, onClose,
+}: {
+  message: InboxMessage
+  onReply: (ticketId: string, body?: string) => Promise<void>
+  onClose: () => void
+}) {
+  const [draftText, setDraftText] = useState(message.draft_reply ?? "")
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
 
-  const isVertexThread = thread.id === "t8"
+  useEffect(() => {
+    setDraftText(message.draft_reply ?? "")
+    setSent(false)
+  }, [message.id, message.draft_reply])
 
-  const aiDraft =
-    thread.status === "open" && thread.invoiceIds.length > 0
-      ? `Thank you for your message regarding ${thread.invoiceIds.join(", ")}. I've noted your request and will have our team review it promptly. We'll get back to you within 1 business day with an update.\n\nBest regards,\nCollections Team`
-      : null
+  const intent = message.intent ? INTENT_STYLES[message.intent] : null
+
+  const handleSend = async () => {
+    setSending(true)
+    await onReply(message.ticket_id, draftText)
+    setSending(false)
+    setSent(true)
+  }
+
+  const actionLines = message.action_summary
+    ? message.action_summary.split(";").map(s => s.trim()).filter(Boolean)
+    : []
 
   return (
-    <div className="flex h-full flex-1 flex-col">
+    <div className="flex h-full flex-1 flex-col min-w-0">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-6 py-4">
         <div>
-          <h2 className="text-base font-semibold text-foreground">
-            {thread.subject}
-          </h2>
-          <div className="mt-1 flex items-center gap-2">
-            {thread.invoiceIds.map((id) => (
-              <Badge
-                key={id}
-                variant="outline"
-                className="font-mono text-[11px] border-border"
-              >
-                {id}
+          <h2 className="text-base font-semibold text-foreground">{message.subject}</h2>
+          <div className="mt-1 flex items-center gap-2 flex-wrap">
+            {message.invoice_number && (
+              <Badge variant="outline" className="font-mono text-[11px] border-border">
+                {message.invoice_number}
               </Badge>
-            ))}
-            {thread.totalAmount > 0 && (
-              <span className="text-sm font-semibold text-accent">
-                {formatCurrency(thread.totalAmount)}
-              </span>
+            )}
+            {intent && (
+              <Badge variant="outline" className={cn("text-[11px] font-medium", intent.color)}>
+                {intent.label}
+              </Badge>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="h-8 w-8">
-            <Sparkles className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
             <MoreHorizontal className="h-4 w-4" />
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 text-xs"
-          >
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={onClose}>
             <X className="h-3 w-3" />
-            Close thread
+            Close
           </Button>
         </div>
       </div>
 
-      {/* Emails */}
       <ScrollArea className="flex-1 px-6 py-4">
         <div className="space-y-4">
-          {thread.emails.map((email) => (
-            <div
-              key={email.id}
-              className="rounded-xl border border-border bg-card p-5"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">
-                    {email.from}
-                  </span>
-                  <ArrowRight className="h-3 w-3" />
-                  <span>{email.to}</span>
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {email.date}
-                </span>
+          {/* Email body */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{message.from_email}</span>
+                <ArrowRight className="h-3 w-3" />
+                <span>collections@demo.com</span>
               </div>
-              <div className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                {email.body}
-              </div>
+              <span className="text-xs text-muted-foreground">
+                {new Date(message.received_at).toLocaleString()}
+              </span>
             </div>
-          ))}
+            <div className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+              {message.body}
+            </div>
+          </div>
 
-          {/* AI Action Banner - enhanced */}
-          {thread.status === "open" && thread.invoiceIds.length > 0 && (
+          {/* AI actions taken */}
+          {actionLines.length > 0 && (
             <div className="rounded-xl border-l-4 border-l-accent border border-accent/20 bg-accent/5 p-4">
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10">
@@ -310,37 +266,26 @@ function EmailView({ thread }: { thread: EmailThread }) {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-foreground">
-                      AI Agent — Actions Taken
-                    </p>
-                    <Badge
-                      variant="outline"
-                      className="border-accent/20 bg-accent/10 text-[10px] font-medium text-accent"
-                    >
-                      <Bot className="mr-1 h-3 w-3" />
-                      AI Agent
+                    <p className="text-sm font-bold text-foreground">AI Agent — Actions Taken</p>
+                    <Badge variant="outline" className="border-accent/20 bg-accent/10 text-[10px] font-medium text-accent">
+                      <Bot className="mr-1 h-3 w-3" />AI Agent
                     </Badge>
                   </div>
-                  {isVertexThread ? (
-                    <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+                  <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+                    {message.intent_summary && (
                       <li className="flex items-center gap-2">
                         <span className="h-1 w-1 rounded-full bg-muted-foreground shrink-0" />
-                        Classified intent: Payment on the way
+                        Classified intent: {intent?.label ?? message.intent}
+                        {message.confidence && ` (${Math.round(message.confidence * 100)}% confidence)`}
                       </li>
-                      <li className="flex items-center gap-2">
+                    )}
+                    {actionLines.map((line, i) => (
+                      <li key={i} className="flex items-center gap-2">
                         <span className="h-1 w-1 rounded-full bg-muted-foreground shrink-0" />
-                        Paused 3 pending reminders for IN-1041
+                        {line}
                       </li>
-                      <li className="flex items-center gap-2">
-                        <span className="h-1 w-1 rounded-full bg-muted-foreground shrink-0" />
-                        Follow-up check scheduled for February 24, 2026
-                      </li>
-                    </ul>
-                  ) : (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      AI detected a payment commitment. Follow-up scheduled if not received.
-                    </p>
-                  )}
+                    ))}
+                  </ul>
                 </div>
               </div>
             </div>
@@ -348,220 +293,256 @@ function EmailView({ thread }: { thread: EmailThread }) {
         </div>
       </ScrollArea>
 
-      {/* AI Draft */}
-      {aiDraft && (
+      {/* AI draft reply */}
+      {draftText && !sent && (
         <div className="border-t border-border bg-accent/5 px-6 py-3">
           <div className="flex items-center gap-2 mb-2">
             <Bot className="h-3.5 w-3.5 text-accent" />
-            <span className="text-xs font-medium text-accent">
-              AI-suggested reply
-            </span>
+            <span className="text-xs font-medium text-accent">AI-suggested reply</span>
           </div>
-          <div className="rounded-lg border border-accent/20 bg-card p-3 text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
-            {aiDraft}
-          </div>
+          <textarea
+            value={draftText}
+            onChange={e => setDraftText(e.target.value)}
+            rows={4}
+            className="w-full resize-none rounded-lg border border-accent/20 bg-card p-3 text-xs leading-relaxed text-foreground outline-none focus:border-accent"
+          />
           <div className="mt-2 flex items-center gap-2">
-            <button className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+            <button
+              onClick={() => setDraftText(message.draft_reply ?? "")}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            >
               <RefreshCw className="h-3 w-3" />
-              Regenerate
+              Reset
             </button>
             <div className="flex-1" />
-            <Button size="sm" className="h-7 gap-1.5 text-xs bg-accent text-accent-foreground hover:bg-accent/90">
+            <Button
+              size="sm"
+              className="h-7 gap-1.5 text-xs bg-accent text-accent-foreground hover:bg-accent/90"
+              onClick={handleSend}
+              disabled={sending}
+            >
               <Send className="h-3 w-3" />
-              Send
-            </Button>
-            <Button size="sm" variant="outline" className="h-7 text-xs">
-              Edit
+              {sending ? "Sending…" : "Send Reply"}
             </Button>
           </div>
         </div>
       )}
 
-      {/* Reply Composer */}
-      <div className="border-t border-border px-6 py-3">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs text-muted-foreground">Reply</span>
+      {sent && (
+        <div className="border-t border-border bg-success/5 px-6 py-4">
+          <p className="text-sm font-medium text-success">Reply sent to {message.from_email}</p>
         </div>
-        <div className="flex items-end gap-2">
-          <textarea
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            placeholder="Type your reply..."
-            rows={2}
-            className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-ring"
-          />
-          <Button size="icon" className="h-9 w-9 bg-accent text-accent-foreground hover:bg-accent/90">
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      )}
     </div>
   )
 }
 
-function CustomerContext({ thread }: { thread: EmailThread }) {
-  const customer = customers[thread.company]
-
-  if (!customer) {
-    return (
-      <div className="flex h-full w-[300px] shrink-0 flex-col items-center justify-center border-l border-border bg-card p-6">
-        <div
-          className={cn(
-            "flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold text-card",
-            thread.color
-          )}
-        >
-          {thread.initials}
-        </div>
-        <h3 className="mt-4 text-base font-semibold text-foreground">
-          {thread.company}
-        </h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          No customer data available
-        </p>
-      </div>
-    )
-  }
+// ---- Customer context panel ----
+function CustomerPanel({ message, customers }: { message: InboxMessage; customers: Customer[] }) {
+  const customer = customers.find(c => c.id === message.customer_id)
 
   return (
-    <div className="flex h-full w-[300px] shrink-0 flex-col border-l border-border bg-card">
-      {/* Customer Header */}
+    <div className="flex h-full w-[280px] shrink-0 flex-col border-l border-border bg-card">
       <div className="flex flex-col items-center border-b border-border px-6 py-6">
-        <div
-          className={cn(
-            "flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold text-card",
-            customer.color
-          )}
-        >
-          {customer.initials}
+        <div className={cn(
+          "flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold text-card",
+          message.customer_color ?? "bg-slate-500",
+        )}>
+          {message.customer_initials ?? "?"}
         </div>
         <h3 className="mt-3 text-base font-semibold text-foreground">
-          {customer.name}
+          {message.customer_name ?? message.from_email}
         </h3>
-        <p className="mt-1 text-sm text-accent">
-          {customer.openInvoices} open invoice{customer.openInvoices !== 1 ? "s" : ""}
-        </p>
-        <p className="text-xl font-bold text-destructive">
-          {formatCurrency(customer.totalOutstanding)}
-        </p>
+        {customer && (
+          <>
+            <p className="mt-1 text-sm text-accent">{customer.invoices.length} invoice(s)</p>
+            <p className="text-xl font-bold text-destructive">{formatCurrency(customer.total_outstanding)}</p>
+          </>
+        )}
       </div>
 
-      {/* Open Invoices */}
-      <div className="border-b border-border px-5 py-4">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Open Invoices
-        </h4>
-        <div className="mt-3 space-y-2">
-          {customer.invoices
-            .filter((inv) => inv.status !== "paid")
-            .map((inv) => (
-              <div
-                key={inv.id}
-                className="flex items-center justify-between rounded-lg border border-border p-3"
-              >
+      {customer && customer.invoices.length > 0 && (
+        <div className="border-b border-border px-5 py-4">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Open Invoices</h4>
+          <div className="mt-3 space-y-2">
+            {customer.invoices.filter(i => i.status !== "resolved").map(inv => (
+              <div key={inv.id} className="flex items-center justify-between rounded-lg border border-border p-3">
                 <div>
-                  <p className="font-mono text-sm font-medium text-foreground">
-                    {inv.id}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Due: {inv.dueDate}
-                  </p>
+                  <p className="font-mono text-sm font-medium text-foreground">{inv.invoice_number}</p>
+                  <p className="text-[11px] text-muted-foreground">Due: {inv.due_date}</p>
                 </div>
                 <span className="text-sm font-semibold tabular-nums text-foreground">
                   {formatCurrency(inv.amount)}
                 </span>
               </div>
             ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Invoice History */}
-      <div className="border-b border-border px-5 py-4">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Invoice history
-        </h4>
-        <div className="mt-3 flex items-center gap-2">
-          {customer.invoiceHistory.map((hist, i) => (
-            <div key={i} className="flex flex-col items-center gap-1">
-              <div
-                className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-full",
-                  hist.status === "paid"
-                    ? "bg-success/10 text-success"
-                    : "bg-destructive/10 text-destructive"
-                )}
-              >
-                <div
-                  className={cn(
-                    "h-3 w-3 rounded-full",
-                    hist.status === "paid" ? "bg-success" : "bg-destructive"
-                  )}
-                />
-              </div>
-              <span className="text-[10px] text-muted-foreground">
-                {formatCurrency(hist.amount)}
-              </span>
-            </div>
+      {customer?.settings && customer.settings.filter(s => s.key === "agent_notes").length > 0 && (
+        <div className="px-5 py-4">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Agent Notes</h4>
+          {customer.settings.filter(s => s.key === "agent_notes").map(s => (
+            <p key={s.id} className="mt-2 text-xs text-muted-foreground leading-relaxed">{s.value}</p>
           ))}
         </div>
-      </div>
-
-      {/* Agent Activity Log */}
-      <div className="px-5 py-4">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Agent Activity Log
-        </h4>
-        <div className="mt-3 space-y-2.5">
-          <div className="flex items-start gap-2.5">
-            <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-amber-500/10">
-              <Pause className="h-3 w-3 text-amber-500" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-foreground">Reminders paused — IN-1041</p>
-              <p className="text-[10px] text-muted-foreground">2 hours ago</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2.5">
-            <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-chart-1/10">
-              <CalendarClock className="h-3 w-3 text-chart-1" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-foreground">Follow-up scheduled Feb 24</p>
-              <p className="text-[10px] text-muted-foreground">2 hours ago</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2.5">
-            <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-blue-700/10">
-              <Mail className="h-3 w-3 text-blue-700" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-foreground">Overdue notice sent — IN-1041</p>
-              <p className="text-[10px] text-muted-foreground">3 days ago</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   )
 }
 
+// ---- Simulator panel ----
+function SimulatorPanel({
+  customers, onSimulated,
+}: {
+  customers: Customer[]
+  onSimulated: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [customerId, setCustomerId] = useState<number | null>(null)
+  const [body, setBody] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (customers.length > 0 && customerId === null) {
+      setCustomerId(customers[0].id)
+    }
+  }, [customers, customerId])
+
+  const handleSimulate = async () => {
+    if (!customerId || !body.trim()) return
+    setLoading(true)
+    setError(null)
+    try {
+      await api.inbox.simulate(customerId, body)
+      setBody("")
+      setOpen(false)
+      onSimulated()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Simulation failed")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="border-t border-border">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center justify-between px-4 py-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Zap className="h-3.5 w-3.5" />
+          Simulate customer message
+        </div>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="border-t border-border px-4 py-3 space-y-3">
+          <select
+            value={customerId ?? ""}
+            onChange={e => setCustomerId(Number(e.target.value))}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
+          >
+            {customers.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <textarea
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            placeholder="e.g. I'll pay next Friday, cash is tight this month"
+            rows={3}
+            className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-ring"
+          />
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <Button
+            size="sm"
+            className="w-full gap-2"
+            onClick={handleSimulate}
+            disabled={loading || !body.trim()}
+          >
+            <Zap className="h-3.5 w-3.5" />
+            {loading ? "Processing…" : "Run through AI pipeline"}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---- Main page ----
 export function InboxPage() {
-  console.log("[v0] InboxPage rendering, threads:", threads.length)
-  const [selectedThread, setSelectedThread] = useState(threads[7]?.id || threads[0].id)
-  const [filter, setFilter] = useState<FilterTab>("open")
-  const thread = threads.find((t) => t.id === selectedThread) || threads[0]
+  const [messages, setMessages] = useState<InboxMessage[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<Tab>("all")
+
+  const fetchAll = useCallback(async () => {
+    const [msgs, custs] = await Promise.all([
+      api.inbox.list(),
+      api.customers.list(),
+    ])
+    setMessages(msgs)
+    setCustomers(custs)
+    // Auto-select first message if none selected
+    if (msgs.length > 0 && selectedId === null) {
+      setSelectedId(msgs[0].ticket_id)
+    }
+  }, [selectedId])
+
+  useEffect(() => {
+    fetchAll()
+    // Poll every 10 seconds
+    const interval = setInterval(fetchAll, 10000)
+    return () => clearInterval(interval)
+  }, [fetchAll])
+
+  const handleReply = async (ticketId: string, body?: string) => {
+    await api.inbox.sendReply(ticketId, body)
+    fetchAll()
+  }
+
+  const handleClose = () => {
+    // Just deselect
+    setSelectedId(messages.find(m => m.ticket_id !== selectedId)?.ticket_id ?? null)
+  }
+
+  const selectedMessage = messages.find(m => m.ticket_id === selectedId)
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
-      <ThreadList
-        threads={threads}
-        selectedId={selectedThread}
-        onSelect={setSelectedThread}
-        filter={filter}
-        onFilterChange={setFilter}
-      />
-      <EmailView thread={thread} />
-      <CustomerContext thread={thread} />
+      {/* Thread list + simulator */}
+      <div className="flex h-full flex-col" style={{ width: 360 }}>
+        <div className="flex-1 min-h-0">
+          <ThreadList
+            messages={messages}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            filter={filter}
+            onFilterChange={setFilter}
+          />
+        </div>
+        <SimulatorPanel customers={customers} onSimulated={fetchAll} />
+      </div>
+
+      {/* Email view */}
+      {selectedMessage ? (
+        <>
+          <EmailView message={selectedMessage} onReply={handleReply} onClose={handleClose} />
+          <CustomerPanel message={selectedMessage} customers={customers} />
+        </>
+      ) : (
+        <div className="flex flex-1 items-center justify-center text-muted-foreground">
+          <div className="text-center">
+            <Mail className="mx-auto h-10 w-10 opacity-20" />
+            <p className="mt-3 text-sm">Select a message or send an email to your demo address</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

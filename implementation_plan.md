@@ -222,13 +222,20 @@ No column parsing, no rigid schema, no day_offset arithmetic in code. Claude doe
 - [ ] Expand ticket → shows full email body, action log, draft reply
 - [ ] Draft reply is editable textarea with Copy button
 
-### 5.4 — Intent Simulator (In-Demo Tool)
-- [ ] Inbox page has a "Simulate Message" button / compose panel
-- [ ] Presenter can type a fake customer message during demo
-- [ ] Select which customer it's from
-- [ ] POST /simulate-message → triggers full classification + schedule update pipeline
-- [ ] Result appears in inbox and timeline within seconds
-- [ ] This is the backup if live Gmail isn't cooperating during the presentation
+### 5.4 — Send Real Replies via Gmail SMTP
+The demo's lightbulb moment: email arrives in the demo Gmail → classified in <10s → presenter hits Send → reply goes back to the sender's real inbox.
+
+- [ ] `services/gmail_sender.py` — SMTP sender using same Gmail credentials (host: smtp.gmail.com, port: 587)
+- [ ] `POST /inbox/{ticket_id}/send-reply` — sends the draft reply (or a custom body) to the original sender
+- [ ] Updates inbox record: `status = "closed"`, logs `action_type = "replied"` to action_log
+- [ ] Frontend Send button in the draft reply area calls this endpoint
+- [ ] The reply email has the original subject prefixed with "Re: " and quotes the original message
+
+### 5.5 — Intent Simulator (Backup Demo Tool)
+- [ ] `POST /inbox/simulate` already built — presenter can trigger the pipeline without a real email
+- [ ] Frontend exposes this as a "Simulate Message" panel in the Inbox page
+- [ ] Backup for when live Gmail isn't cooperating during the presentation
+- [ ] Identical pipeline to a real email — audience sees the same result either way
 
 **Testable after this phase:** Full Workflow 2 demo using simulator — type "I'll pay next Friday", watch intent badge appear and timeline update.
 

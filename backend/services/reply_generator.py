@@ -50,7 +50,7 @@ Keep the reply to 3-5 sentences. Be professional and human."""
 
     try:
         response = client.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-opus-4-6",
             max_tokens=512,
             system=REPLY_SYSTEM,
             messages=[{"role": "user", "content": user_message}],

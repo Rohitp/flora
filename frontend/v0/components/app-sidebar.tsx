@@ -17,7 +17,7 @@ const navItems = [
   { label: "Inbox", href: "/inbox", icon: Inbox },
   { label: "Invoices", href: "/timeline", icon: FileText },
   { label: "Automations", href: "/automations", icon: Zap },
-  { label: "Settings", href: "#", icon: Settings },
+  { label: "Settings", href: "/settings", icon: Settings },
 ]
 
 export function AppSidebar() {

@@ -53,7 +53,7 @@ Classify the intent of this email."""
 
     try:
         response = client.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-opus-4-6",
             max_tokens=256,
             system=CLASSIFICATION_SYSTEM,
             messages=[{"role": "user", "content": user_message}],

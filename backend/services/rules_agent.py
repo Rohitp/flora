@@ -89,7 +89,7 @@ Mark actions as "sent" if scheduled_date is before today ({today}), otherwise "p
 Return the full JSON."""
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-opus-4-6",
         max_tokens=4096,
         system=RULES_AGENT_SYSTEM,
         messages=[{"role": "user", "content": user_message}],

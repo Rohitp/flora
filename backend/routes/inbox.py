@@ -1,7 +1,9 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
-from models import InboxMessage, Customer, Invoice
+from models import InboxMessage, Customer, Invoice, ActionLog
 from schemas import InboxMessageOut, SimulateMessageIn
 
 router = APIRouter(prefix="/inbox", tags=["inbox"])
@@ -55,4 +57,46 @@ def simulate_message(payload: SimulateMessageIn, db: Session = Depends(get_db)):
         body=payload.body,
         simulated=True,
     )
+    return _enrich(msg)
+
+
+class SendReplyIn(BaseModel):
+    body: Optional[str] = None  # if None, sends the existing draft_reply
+
+
+@router.post("/{ticket_id}/send-reply", response_model=InboxMessageOut)
+def send_reply(ticket_id: str, payload: SendReplyIn, db: Session = Depends(get_db)):
+    """
+    Send the draft reply (or a custom body) as a real email via Gmail SMTP.
+    This is the demo's lightbulb moment — the reply goes to the actual sender's inbox.
+    """
+    msg = db.query(InboxMessage).filter(InboxMessage.ticket_id == ticket_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    body_to_send = payload.body or msg.draft_reply
+    if not body_to_send:
+        raise HTTPException(status_code=400, detail="No reply body — generate a draft first")
+
+    from services.gmail_sender import send_reply as smtp_send
+    success = smtp_send(
+        to_email=msg.from_email,
+        subject=msg.subject,
+        body=body_to_send,
+    )
+
+    if not success:
+        raise HTTPException(status_code=503, detail="Gmail SMTP not configured or send failed")
+
+    # Mark thread as closed and log the action
+    msg.status = "closed"
+    db.add(ActionLog(
+        invoice_id=msg.invoice_id,
+        inbox_id=msg.id,
+        action_type="replied",
+        description=f"Reply sent to {msg.from_email} for ticket {ticket_id}",
+    ))
+    db.commit()
+    db.refresh(msg)
+
     return _enrich(msg)
