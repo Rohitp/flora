@@ -6,7 +6,7 @@ _Last updated: 2026-02-21_
 
 ## Current Project State
 
-**Frontend**: Next.js 16 app in `frontend/v0/`. All five pages fully wired to the real backend. Static data removed. Live polling on inbox and dashboard (10s interval).
+**Frontend**: Next.js 16 app in `frontend/v0/`. All pages fully wired to the real backend. Static data removed. Live polling on inbox and dashboard (10s interval).
 
 **Backend**: FastAPI app in `backend/`. Running on `localhost:8000`. SQLite database seeded. All routes live. Gmail poller running as background thread. Full AI pipeline built.
 
@@ -21,7 +21,7 @@ _Last updated: 2026-02-21_
 ## The Two Demo Moments
 
 ### Demo Moment 1 — Rules Upload → Timelines Populate ✓ BUILT
-App opens showing 5 customer cards, no timelines. Presenter drags any rules file onto the upload zone. Claude reads it, computes the full schedule for all 5 invoices, timelines populate instantly colour-coded.
+App opens showing all customer cards, no timelines. Presenter drags any rules file onto the upload zone. Claude reads it, computes the full schedule for all invoices, timelines populate instantly colour-coded.
 
 ### Demo Moment 2 — Email Arrives → Inbox Updates + Reply Sent ✓ BUILT
 Send a real email to the demo Gmail address. Within ~15 seconds: ticket appears in inbox, intent badge shows classification, timeline for that customer updates, draft reply is ready. Presenter edits if needed and hits Send — reply goes to the sender's real inbox.
@@ -57,27 +57,31 @@ settings(id, scope, customer_id, key, value, updated_at)
 - `scope = "customer"` — per-customer override, customer_id set
 - Agent reads customer-specific first, falls back to global
 - Agent can write new settings after taking actions
-- Seeded with 6 global defaults + customer-specific overrides for 4 of 5 customers
+- Seeded with 6 global defaults + customer-specific overrides for all 9 customers
 
 ### 1.2 — Seed Dummy Data ✓
 - [x] `backend/seed.py` — runs on startup if DB is empty
-- [x] 5 customers with invoices, due dates relative to today
+- [x] 9 customers (5 dummy + 4 live demo) with invoices, due dates relative to today
 - [x] Global settings seeded (contact_language, escalation_threshold_days, reply_sign_off, etc.)
 - [x] Per-customer settings seeded (agent_notes, dispute_route, pause_automated_contact, preferred_contact_time)
 
-**5 Dummy Customers:**
+**9 customers (5 dummy + 4 live demo):**
 | Name | Email | Invoice | Amount | Status |
 |---|---|---|---|---|
 | NovaTech Corp | billing@novatech-demo.com | IN-1023 | $34,200 | current (+7d) |
 | Pinnacle Corp | finance@pinnacle-demo.com | IN-1035 | $23,400 | overdue (-12d) |
 | Meridian LLC | ar@meridian-demo.com | IN-1040 | $18,900 | overdue (-16d) |
-| Acme Inc | billing@acme-demo.com | IN-1045 | $12,500 | current (+4d) |
-| GlobalTech Solutions | ap@globaltech-demo.com | IN-1030 | $8,750 | overdue (-37d) |
+| Acme Inc | billing@acme-demo.com | IN-1045 | $12,500 | current (+14d) |
+| GlobalTech Solutions | ap@globaltech-demo.com | IN-1030 | $8,750 | current (+3d) |
+| Rajaraman and Daughter Finance | rr@chargebee.com | IN-1050 | $45,000 | overdue (-5d) |
+| Saravana Technology Services | kps@chargebee.com | IN-1055 | $28,500 | current (+10d) |
+| Ankhmorprok Antiquities | rohit.p@chargebee.com | IN-1060 | $15,750 | overdue (-20d) |
+| Mahesh Pav Bhaji Company | maheshwar.v@chargebee.com | IN-1065 | $9,200 | current (+5d) |
 
 **Verified working:**
 ```bash
-curl localhost:8000/health          # {"status":"ok","db_seeded":true,"customer_count":5}
-curl localhost:8000/customers       # 5 customers with invoices and settings
+curl localhost:8000/health          # {"status":"ok","db_seeded":true,"customer_count":9}
+curl localhost:8000/customers       # 9 customers with invoices and settings
 curl localhost:8000/customers/1/settings  # merged global + customer settings
 ```
 
@@ -88,15 +92,16 @@ curl localhost:8000/customers/1/settings  # merged global + customer settings
 
 ### 2.1 — Rules Agent Service ✓
 - [x] `backend/services/rules_agent.py` — Claude call with `claude-opus-4-6`
-- [x] Accepts raw file text + invoice context (name, invoice #, due date, today's date)
+- [x] Sends raw PDF bytes as a native Claude document block (base64-encoded) — no text extraction
+- [x] Invoice context passed as plain text alongside the document
 - [x] Claude returns `{ rules: [...], scheduled_actions: [...] }` as structured JSON
-- [x] No column matching, no arithmetic — Claude interprets rules and computes all dates
+- [x] No column matching, no arithmetic — Claude reads the document natively and computes all dates
 - [x] Strips markdown fences from response defensively
+- [x] `max_tokens=8192` (raised from 4096 — rules docs with email templates are verbose)
 
 ### 2.2 — `POST /rules/upload` ✓
-- [x] `backend/routes/rules.py` — accepts any file format
-- [x] Excel → CSV text conversion via pandas (only use of pandas — no logic)
-- [x] CSV/txt read as raw UTF-8
+- [x] `backend/routes/rules.py` — accepts PDF files
+- [x] Raw bytes passed directly to agent — no format conversion layer
 - [x] Calls `rules_agent.parse_and_schedule()`
 - [x] Wipes old rules + scheduled_actions before persisting new ones
 - [x] Returns `{ rules_count, invoices_scheduled, message }`
@@ -112,9 +117,13 @@ curl localhost:8000/customers/1/settings  # merged global + customer settings
 - [x] `GET /rules` → all loaded rules
 - [x] `GET /invoices` → all invoices with status
 - [x] `GET /invoices/{id}/schedule` → full scheduled actions for one invoice
+- [x] `GET /invoices/{id}/timeline` → alias for `/schedule`
 
-### 2.5 — Sample rules file ✓
-- [x] `sample_rules.csv` — 12 rules (soft reminder -7d through final notice +45d, 2 internal escalations)
+### 2.5 — Write endpoints ✓
+- [x] `POST /rules/{id}/pause` → toggle rule between active/paused
+
+### 2.6 — Sample rules file ✓
+- [x] `ArDocument.pdf` — real Chargebee AR process document (gitignored), 14 rules (I–XIV)
 
 ---
 
@@ -123,7 +132,7 @@ curl localhost:8000/customers/1/settings  # merged global + customer settings
 
 ### 3.1 — API Client ✓
 - [x] `frontend/v0/lib/api.ts` — typed fetch wrapper, base URL `http://localhost:8000`
-- [x] All 18 endpoints covered with TypeScript types mirroring Pydantic schemas
+- [x] All endpoints covered with TypeScript types mirroring Pydantic schemas
 - [x] `get()`, `post()`, `postForm()` helpers — base URL swappable in one place
 
 ### 3.2 — Timeline / Invoices Page ✓
@@ -214,6 +223,7 @@ curl localhost:8000/customers/1/settings  # merged global + customer settings
 All inbox features built as part of Phase 3/4:
 - [x] `GET /inbox` — reverse chronological, enriched with customer name/initials/color
 - [x] `GET /inbox/{ticket_id}` — full thread
+- [x] `GET /inbox/{ticket_id}/thread` — message + scheduled actions in one call (ThreadOut schema)
 - [x] `POST /inbox/simulate` — presenter trigger, identical pipeline to real email
 - [x] `POST /inbox/{ticket_id}/send-reply` — real SMTP reply
 - [x] Frontend polls every 10s
@@ -239,6 +249,30 @@ All inbox features built as part of Phase 3/4:
 
 ---
 
+## Phase 7 — Tests
+**Status: COMPLETE ✓**
+
+- [x] `backend/tests/conftest.py` — shared fixtures: StaticPool in-memory SQLite, `db` session, `client` TestClient with `get_db` override, 8 factory helpers
+- [x] `backend/tests/test_health.py` — 2 tests
+- [x] `backend/tests/test_customers.py` — 13 tests (list, get, settings merge, PATCH settings)
+- [x] `backend/tests/test_dashboard.py` — 11 tests (KPI buckets, action log, recent activity)
+- [x] `backend/tests/test_admin.py` — 7 tests (reset behaviour, keep customers)
+- [x] `backend/tests/test_invoices.py` — 8 tests (list, schedule, timeline alias, sort)
+- [x] `backend/tests/test_inbox.py` — 13 tests (list, get, simulate, send-reply, thread)
+- [x] `backend/tests/test_rules.py` — 10 tests (list, upload mocked, pause toggle)
+- [x] `backend/tests/test_pipeline.py` — 26 tests (customer matching, threading, all 4 intents, invoice selection, action log)
+- [x] **90 tests total, all passing in 0.32s**
+
+Dev dependencies in `pyproject.toml`:
+```toml
+[project.optional-dependencies]
+dev = ["pytest==8.3.4", "pytest-mock==3.14.0", "httpx==0.28.1"]
+```
+
+Run with: `uv run pytest tests/ -v`
+
+---
+
 ## All Routes
 
 | Method | Path | Status |
@@ -247,12 +281,16 @@ All inbox features built as part of Phase 3/4:
 | GET | `/customers` | ✓ |
 | GET | `/customers/{id}` | ✓ |
 | GET | `/customers/{id}/settings` | ✓ |
+| PATCH | `/customers/{id}/settings` | ✓ |
 | GET | `/invoices` | ✓ |
 | GET | `/invoices/{id}/schedule` | ✓ |
+| GET | `/invoices/{id}/timeline` | ✓ (alias) |
 | GET | `/rules` | ✓ |
 | POST | `/rules/upload` | ✓ |
+| POST | `/rules/{id}/pause` | ✓ |
 | GET | `/inbox` | ✓ |
 | GET | `/inbox/{ticket_id}` | ✓ |
+| GET | `/inbox/{ticket_id}/thread` | ✓ |
 | POST | `/inbox/simulate` | ✓ |
 | POST | `/inbox/{ticket_id}/send-reply` | ✓ |
 | GET | `/dashboard/summary` | ✓ |

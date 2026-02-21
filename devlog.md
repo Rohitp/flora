@@ -93,9 +93,71 @@ Original plan used pandas to parse CSV columns and deterministic code to compute
 
 **Why:** Better demo story ("drop any file format — the AI figures it out"), more robust to messy real-world rules docs, consistent with the product's AI-first positioning.
 
-**Implementation:** `services/rules_agent.py` sends raw file text + all invoice due dates to Claude in one call. Claude returns structured JSON with both the parsed rules table and the complete scheduled actions for every invoice. Pandas is kept only to convert Excel binary to readable text before sending — not for any logic.
+**Implementation:** `services/rules_agent.py` sends raw file bytes + all invoice due dates to Claude in one call as a native PDF document block (base64-encoded). Claude reads the document natively — no text extraction, no pandas — and returns structured JSON with both the parsed rules table and the complete scheduled actions for every invoice.
 
 **Consequence:** `POST /rules/upload` and `POST /inbox/simulate` both require `ANTHROPIC_API_KEY`. The only endpoints that work without it are `/health`, `/customers`, and `/dashboard/summary`.
+
+---
+
+## 2026-02-21 — PDF-native upload: switched from text extraction to Claude document blocks
+
+Originally tried pypdf for text extraction, then removed it. Instead, the raw PDF bytes are base64-encoded and sent to Claude as a `{"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": "..."}}` block.
+
+**Why:** Claude reads PDFs natively — tables, layout, formatting intact. Text extraction via pypdf loses column alignment and table structure, which are critical for reading a rules schedule. One fewer dependency, cleaner code, better results.
+
+**Prompt improvements after reviewing the real ArDocument.pdf:**
+- Added `"Monthly"` to frequency options
+- Raised `max_tokens` 4096 → 8192 (rules docs with email templates are verbose)
+- Told Claude to focus on the summary table, not email body text
+- Added guidance for conditional rules (e.g. ">$25k ARR legal intervention")
+- Added audience mapping: "AM / AR DL" → "Internal"
+- Added `color: "orange"` for monthly recurring rules
+
+**Upload route** now accepts only `.pdf` and passes raw bytes directly to the agent — no format conversion layer.
+
+---
+
+## 2026-02-21 — 4 additional APIs added
+
+Added missing APIs to make the backend fully operable without a UI:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `PATCH` | `/customers/{id}/settings` | Upsert any key-value settings for a customer (agent_notes, dispute_route, etc.) |
+| `POST` | `/rules/{id}/pause` | Toggle a rule between active/paused |
+| `GET` | `/invoices/{id}/timeline` | Alias for `/schedule` — cleaner name for external tooling |
+| `GET` | `/inbox/{ticket_id}/thread` | Returns message + all scheduled actions for that customer's invoice in one call |
+
+`ThreadOut` schema added to `schemas.py` combining `InboxMessageOut` + `list[ScheduledActionOut]`.
+
+---
+
+## 2026-02-21 — Test suite: 90 tests, 0.32s
+
+Added a comprehensive pytest suite. Key decisions:
+
+**SQLite in-memory + StaticPool:** `sqlite:///:memory:` creates a new empty DB per connection. Using `StaticPool` forces all SQLAlchemy connections to share one underlying SQLite connection — tables created once are visible to every session in the same process.
+
+**No lifespan in tests:** `TestClient` used without a context manager skips the FastAPI lifespan (no seed, no Gmail poller). DB is seeded per-test via factory helpers.
+
+**Dependency override:** `app.dependency_overrides[get_db] = override_get_db` injects the test session into all route handlers. Cleared after each test.
+
+**Mock target correctness:** `pipeline.py` does `from services.classifier import classify_email` at import time. Patching `services.classifier.classify_email` does nothing because pipeline already holds a local reference. Correct target is `services.pipeline.classify_email`.
+
+**Health endpoint:** Fixed to use `get_db` dependency instead of `SessionLocal()` directly — the latter bypasses the test DB override.
+
+**90 tests across 8 files:**
+
+| File | Tests | Covers |
+|---|---|---|
+| `test_health.py` | 2 | health endpoint, customer count reflection |
+| `test_customers.py` | 13 | list, get, settings merge, PATCH settings |
+| `test_dashboard.py` | 11 | KPI bucketing (6 states), action log, recent activity |
+| `test_admin.py` | 7 | reset clears rules/actions/inbox/log, keeps customers |
+| `test_invoices.py` | 8 | list, schedule, timeline alias, sort order |
+| `test_inbox.py` | 13 | list, get, simulate, send-reply, thread endpoint |
+| `test_rules.py` | 10 | list, upload (mocked agent), pause toggle |
+| `test_pipeline.py` | 26 | customer matching, thread dedup, all 4 intents, invoice selection |
 
 ---
 
@@ -121,7 +183,7 @@ Using `uv` for the backend. `pyproject.toml` added alongside `requirements.txt`.
 | Backend | FastAPI + Uvicorn | 0.115.6 / 0.32.1 | |
 | ORM | SQLAlchemy | 2.0.36 | |
 | Database | SQLite | — | File: `backend/flora.db` |
-| File handling | pandas | 2.2.3 | Excel→text only, no logic |
+| File handling | — | — | PDF bytes passed directly to Claude; pandas kept as dep but unused in upload path |
 | AI | Anthropic SDK | 0.40.0 | claude-opus-4-6 for all calls |
 | Email receive | imaplib (stdlib) | — | IMAP, polls every 10s |
 | Email send | smtplib (stdlib) | — | SMTP, port 587, STARTTLS |
@@ -135,30 +197,40 @@ Using `uv` for the backend. `pyproject.toml` added alongside `requirements.txt`.
 ```
 flora/
 ├── backend/
-│   ├── main.py                  # FastAPI app, CORS, lifespan startup
-│   ├── database.py              # SQLAlchemy engine, session, Base
+│   ├── main.py                  # FastAPI app, CORS, lifespan startup; health uses get_db
+│   ├── database.py              # SQLAlchemy engine, session, Base, get_db
 │   ├── models.py                # 7 ORM models
-│   ├── schemas.py               # All Pydantic response types
-│   ├── seed.py                  # 5 customers + settings on first run
-│   ├── pyproject.toml           # uv-managed dependencies
+│   ├── schemas.py               # All Pydantic response types incl. ThreadOut
+│   ├── seed.py                  # 9 customers (5 dummy + 4 live demo) + settings on first run
+│   ├── pyproject.toml           # uv-managed deps; [dev] = pytest, pytest-mock, httpx
 │   ├── requirements.txt         # kept for reference
 │   ├── .env.example             # ANTHROPIC_API_KEY, GMAIL_USER, GMAIL_APP_PASSWORD
 │   ├── flora.db                 # SQLite database (gitignored)
 │   ├── routes/
-│   │   ├── customers.py         # GET /customers, GET /customers/{id}, GET /customers/{id}/settings
-│   │   ├── invoices.py          # GET /invoices, GET /invoices/{id}/schedule
-│   │   ├── rules.py             # GET /rules, POST /rules/upload
-│   │   ├── inbox.py             # GET /inbox, GET /inbox/{id}, POST /inbox/simulate, POST /inbox/{id}/send-reply
+│   │   ├── customers.py         # GET /customers, GET|PATCH /customers/{id}/settings
+│   │   ├── invoices.py          # GET /invoices, GET /invoices/{id}/schedule|timeline
+│   │   ├── rules.py             # GET /rules, POST /rules/upload, POST /rules/{id}/pause
+│   │   ├── inbox.py             # GET /inbox, GET /inbox/{id}|{id}/thread, POST simulate|send-reply
 │   │   ├── dashboard.py         # GET /dashboard/summary, GET /dashboard/action-log
 │   │   └── admin.py             # POST /admin/reset
-│   └── services/
-│       ├── rules_agent.py       # Claude: parse rules file + compute full schedule
-│       ├── classifier.py        # Claude: classify email intent → structured JSON
-│       ├── reply_generator.py   # Claude: generate draft reply
-│       ├── pipeline.py          # Full email processing pipeline (thread match → classify → adjust → draft)
-│       ├── scheduler.py         # 4 schedule adjustment functions (no generation)
-│       ├── gmail_poller.py      # IMAP background thread, polls every 10s
-│       └── gmail_sender.py      # SMTP send, same credentials as poller
+│   ├── services/
+│   │   ├── rules_agent.py       # Claude: PDF document block → parse rules + compute full schedule
+│   │   ├── classifier.py        # Claude: classify email intent → structured JSON
+│   │   ├── reply_generator.py   # Claude: generate draft reply
+│   │   ├── pipeline.py          # Full email processing pipeline (thread match → classify → adjust → draft)
+│   │   ├── scheduler.py         # 4 schedule adjustment functions (no generation)
+│   │   ├── gmail_poller.py      # IMAP background thread, polls every 10s
+│   │   └── gmail_sender.py      # SMTP send, same credentials as poller
+│   └── tests/
+│       ├── conftest.py          # StaticPool SQLite fixture, client override, 8 factory helpers
+│       ├── test_health.py       # 2 tests
+│       ├── test_customers.py    # 13 tests
+│       ├── test_dashboard.py    # 11 tests
+│       ├── test_admin.py        # 7 tests
+│       ├── test_invoices.py     # 8 tests
+│       ├── test_inbox.py        # 13 tests
+│       ├── test_rules.py        # 10 tests
+│       └── test_pipeline.py     # 26 tests
 ├── frontend/
 │   └── v0/
 │       ├── app/
@@ -166,7 +238,7 @@ flora/
 │       │   ├── inbox/page.tsx            # → InboxPage
 │       │   ├── timeline/page.tsx         # → TimelinePage
 │       │   ├── automations/page.tsx      # → AutomationsPage
-│       │   └── settings/page.tsx         # → SettingsPage (new)
+│       │   └── settings/page.tsx         # → SettingsPage
 │       ├── components/
 │       │   ├── app-shell.tsx             # unchanged
 │       │   ├── app-sidebar.tsx           # Settings link fixed to /settings
@@ -174,12 +246,11 @@ flora/
 │       │   ├── timeline-page.tsx         # wired to API, empty state, drag-drop upload
 │       │   ├── inbox-page.tsx            # wired to API, 10s polling, send reply, simulator
 │       │   ├── automations-page.tsx      # wired to API, upload UI
-│       │   └── settings-page.tsx         # new — reset button with confirmation
+│       │   └── settings-page.tsx         # reset button with confirmation
 │       └── lib/
-│           ├── api.ts                    # new — typed fetch client
+│           ├── api.ts                    # typed fetch client
 │           └── data.ts                   # kept — reference types only
 ├── designs/                     # Reference screenshots (untouched)
-├── sample_rules.csv             # 12 rules for demo upload
 ├── implementation_plan.md
 ├── devlog.md
 ├── scope.md

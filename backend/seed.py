@@ -1,5 +1,5 @@
 """
-Seed the database with 5 dummy customers + invoices + global/customer settings.
+Seed the database with 9 customers (5 dummy + 4 live demo) + invoices + global/customer settings.
 Called on startup if the customers table is empty.
 """
 from datetime import date, timedelta

@@ -8,16 +8,16 @@ Build in this order. Each step produces something visible and demoable before mo
 Set up the monorepo structure with a backend/ folder and a frontend/ folder. Initialise the FastAPI app with a health check endpoint. Initialise the React + Vite app with Tailwind CSS. Confirm both run locally and the frontend can call the backend health check. Set up the .env file with placeholder keys for the Anthropic API key and Gmail app password.
 
 ### Step 2 — Database and Dummy Data
-Create the SQLite database with all tables: rules, invoices, scheduled_actions, inbox, action_log. On backend startup, check if the database is empty and if so seed it with five dummy customers. Each dummy customer has a realistic name, a controlled email address, an invoice number, an invoice amount, and a due date. Two customers are already overdue, two are due within 7 days, one is due in 14 days. Expose a GET /customers endpoint that returns all five. Confirm dummy data loads correctly.
+Create the SQLite database with all tables: rules, invoices, scheduled_actions, inbox, action_log. On backend startup, check if the database is empty and if so seed it with nine customers (5 dummy + 4 live demo). Each has a realistic name, a controlled email address, an invoice number, an invoice amount, and a due date. The original five include two overdue, two due within 7 days, and one due in 14 days; four additional live demo accounts use real inbox addresses. Expose a GET /customers endpoint that returns all nine. Confirm dummy data loads correctly.
 
 ### Step 3 — Rules Upload and Schedule Computation
-Build the POST /upload-rules endpoint that accepts a CSV or Excel file, parses it with pandas, saves the rules to the database, and triggers schedule computation for all five existing invoices immediately. Schedule computation applies each rule's day offset to each invoice's due date to produce a dated scheduled action. Expose GET /invoices/:id/schedule to return the computed schedule for one invoice. Test with the sample CSV.
+Build the POST /upload-rules endpoint that accepts a CSV or Excel file, parses it with pandas, saves the rules to the database, and triggers schedule computation for all existing invoices immediately. Schedule computation applies each rule's day offset to each invoice's due date to produce a dated scheduled action. Expose GET /invoices/:id/schedule to return the computed schedule for one invoice. Test with the sample CSV.
 
 ### Step 4 — Frontend Shell and Navigation
 Build the React app shell with a sidebar navigation linking to three views: Invoices, Inbox, and a Settings/Reset page. No real content yet — just the layout, sidebar, and placeholder panels. This is where the designs/ folder reference images should be used to set the visual tone for the whole app. Get the layout looking sharp before filling in content.
 
 ### Step 5 — Invoice and Timeline View
-Build the Invoices view. Show all five customers as cards. Each card shows customer name, invoice number, amount, due date, and current status. Clicking a card expands or navigates to the full timeline for that invoice. The timeline is a vertical component showing each scheduled action as a node with its date, action name, audience, and status. Colour code as defined in the colour coding section. If no rules have been uploaded yet, show an empty state with a drag and drop upload area prominently in the centre of the screen. When rules are uploaded the timelines populate immediately across all five invoices.
+Build the Invoices view. Show all customers as cards. Each card shows customer name, invoice number, amount, due date, and current status. Clicking a card expands or navigates to the full timeline for that invoice. The timeline is a vertical component showing each scheduled action as a node with its date, action name, audience, and status. Colour code as defined in the colour coding section. If no rules have been uploaded yet, show an empty state with a drag and drop upload area prominently in the centre of the screen. When rules are uploaded the timelines populate immediately across all invoices.
 
 ### Step 6 — Drag and Drop Rules Upload
 Add the drag and drop file upload component to the empty state of the Invoices view. On drop, POST the file to /upload-rules. On success, reload all invoice timelines. The transition from empty state to populated timelines should feel fast and satisfying — this is the key demo moment for Workflow 1.
@@ -38,14 +38,14 @@ Build the Inbox view as a shared team inbox. Show all tickets in reverse chronol
 Implement threading logic. When a new email arrives from a sender who already has an open ticket, match it to the existing ticket by normalising the subject line (strip Re:, Fwd: prefixes) and matching on sender email. Append the new message to the existing thread rather than creating a new ticket. The inbox card should show a thread count badge if there are multiple messages.
 
 ### Step 12 — Reset and Polish
-Build the Settings/Reset page with a single prominent reset button. On click, call POST /reset which wipes all scheduled actions, inbox messages, action logs, and rules, then re-seeds the five dummy customers. Rules are cleared so the app returns to the empty state ready for the next demo run. Spend remaining time on visual polish — transitions, loading states, empty states, and making the timeline and inbox feel alive and responsive.
+Build the Settings/Reset page with a single prominent reset button. On click, call POST /reset which wipes all scheduled actions, inbox messages, action logs, and rules, then re-seeds the nine customers. Rules are cleared so the app returns to the empty state ready for the next demo run. Spend remaining time on visual polish — transitions, loading states, empty states, and making the timeline and inbox feel alive and responsive.
 
 ---
 
 ## Definition of Done for the Demo
 
-- App opens showing five customers with no timeline (rules not yet uploaded)
-- Drag and drop the CSV — all five timelines populate instantly
+- App opens showing all customers with no timeline (rules not yet uploaded)
+- Drag and drop the CSV — all timelines populate instantly
 - Send an email to the demo Gmail address from one of the controlled customer addresses
 - Within 10 seconds the email appears in the inbox with a ticket ID
 - The intent badge shows the classification
@@ -121,11 +121,11 @@ Five entities: rules, invoices, scheduled actions, inbox messages, and intent cl
 
 ## Database Setup and Dummy Data
 
-On first run the backend creates the SQLite database and seeds it with five dummy customers. These customers exist in the app before any rules are uploaded — their invoices show as unconfigured with no scheduled actions yet. Once the rules file is uploaded, the backend computes and populates the schedule for all five invoices automatically.
+On first run the backend creates the SQLite database and seeds it with nine customers (5 dummy + 4 live demo). These customers exist in the app before any rules are uploaded — their invoices show as unconfigured with no scheduled actions yet. Once the rules file is uploaded, the backend computes and populates the schedule for all nine invoices automatically.
 
 The five dummy customers should have realistic names, email addresses (all pointing to real inboxes you control for the demo), and due dates spread across the past and near future so the timeline shows a mix of upcoming reminders, overdue notices, and already-triggered actions. Two customers should have due dates in the past (already overdue), two in the next 7 days, and one due in 14 days.
 
-A reset endpoint on the backend wipes all scheduled actions and inbox messages and re-seeds the five dummy customers, so the demo can be rerun cleanly without restarting the server.
+A reset endpoint on the backend wipes all scheduled actions and inbox messages and re-seeds the nine customers, so the demo can be rerun cleanly without restarting the server.
 
 ## Demo Narrative and App States
 
