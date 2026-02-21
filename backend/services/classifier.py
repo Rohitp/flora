@@ -19,6 +19,9 @@ Valid intents:
 - disputed: Customer disputes the invoice amount, contents, or validity
 - unclear: The message does not clearly express any of the above
 
+If agent notes are provided, use them as context about this customer's history — prior
+promises, disputes, or patterns — to inform a more accurate classification.
+
 Return this exact JSON structure:
 {
   "intent": "<one of the four values above>",
@@ -34,15 +37,18 @@ def classify_email(
     invoice_number: str,
     invoice_amount: float,
     due_date: date,
+    agent_notes: str = "",
 ) -> dict:
     """
     Classify a customer email. Returns a dict with:
     intent, confidence, promised_date (str or None), summary
     """
+    notes_section = f"\nAgent notes on this customer:\n{agent_notes}\n" if agent_notes else ""
+
     user_message = f"""Customer: {customer_name}
 Invoice: {invoice_number}
 Amount: ${invoice_amount:,.2f}
-Due date: {due_date}
+Due date: {due_date}{notes_section}
 
 Customer's email:
 ---

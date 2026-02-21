@@ -11,6 +11,8 @@ REPLY_SYSTEM = """You are a professional accounts receivable collections agent w
 Write a concise, professional, and empathetic email reply to a customer.
 Tone: firm but courteous. Never threatening. Always leave the door open for resolution.
 Do NOT include a subject line. Do NOT include placeholders like [Name].
+If agent notes are provided, use them to personalise the reply — reference prior context where
+relevant (e.g. acknowledging a previous promise, noting a recurring pattern) without being accusatory.
 Sign off as 'Collections Team'."""
 
 
@@ -22,6 +24,7 @@ def generate_draft_reply(
     actions_taken: list[str],
     promised_date: str | None = None,
     settings: dict | None = None,
+    agent_notes: str = "",
 ) -> str:
     """
     Generate a draft email reply body. Returns plain text string.
@@ -38,9 +41,11 @@ def generate_draft_reply(
         "unclear": "The customer's message was unclear in terms of payment intent.",
     }.get(intent, "The customer responded to our invoice.")
 
+    notes_section = f"\nAgent notes on this customer (use for context/personalisation):\n{agent_notes}\n" if agent_notes else ""
+
     user_message = f"""Write a reply email to {customer_name} regarding invoice {invoice_number} (${invoice_amount:,.2f}).
 
-Context: {intent_context}
+Context: {intent_context}{notes_section}
 
 Actions our system has automatically taken:
 {actions_summary}

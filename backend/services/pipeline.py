@@ -3,10 +3,12 @@ The email processing pipeline.
 Called by both the Gmail poller and the /inbox/simulate endpoint.
 Steps:
 1. Match sender email to a customer + invoice
-2. Classify intent via Claude
-3. Apply schedule adjustment
-4. Generate draft reply via Claude
-5. Persist everything to DB
+2. Read existing agent notes for this customer
+3. Classify intent via Claude (with agent notes context)
+4. Apply schedule adjustment
+5. Generate draft reply via Claude (with agent notes context)
+6. Persist everything to DB
+7. Update agent notes with this interaction
 """
 import re
 from datetime import datetime, date, timedelta
@@ -14,6 +16,7 @@ from sqlalchemy.orm import Session
 from models import Customer, Invoice, InboxMessage, Setting, ActionLog
 from services.classifier import classify_email
 from services.reply_generator import generate_draft_reply
+from services.notes_updater import update_agent_notes
 from services import scheduler
 
 
@@ -42,6 +45,30 @@ def _get_customer_settings(db: Session, customer_id: int | None) -> dict:
     return merged
 
 
+def _upsert_agent_notes(db: Session, customer_id: int, notes: str) -> None:
+    """Write updated agent notes back to the settings table."""
+    setting = (
+        db.query(Setting)
+        .filter(
+            Setting.scope == "customer",
+            Setting.customer_id == customer_id,
+            Setting.key == "agent_notes",
+        )
+        .first()
+    )
+    if setting:
+        setting.value = notes
+        setting.updated_at = datetime.utcnow()
+    else:
+        db.add(Setting(
+            scope="customer",
+            customer_id=customer_id,
+            key="agent_notes",
+            value=notes,
+        ))
+    db.commit()
+
+
 def process_email(
     db: Session,
     from_email: str,
@@ -50,7 +77,7 @@ def process_email(
     simulated: bool = False,
 ) -> InboxMessage:
     """
-    Full pipeline: receive email → classify → adjust schedule → draft reply → persist.
+    Full pipeline: receive email → classify → adjust schedule → draft reply → persist → update notes.
     Returns the persisted InboxMessage.
     """
     # 1. Match customer
@@ -78,7 +105,11 @@ def process_email(
             .first()
         )
 
-    # 3. Classify intent
+    # 3. Read existing agent notes (used as context for classification + reply)
+    settings = _get_customer_settings(db, customer.id if customer else None)
+    agent_notes = settings.get("agent_notes", "")
+
+    # 4. Classify intent (with agent notes context)
     classification = {"intent": "unclear", "confidence": 0.0, "promised_date": None, "summary": ""}
     if customer and invoice:
         classification = classify_email(
@@ -87,6 +118,7 @@ def process_email(
             invoice_number=invoice.invoice_number,
             invoice_amount=invoice.amount,
             due_date=invoice.due_date,
+            agent_notes=agent_notes,
         )
 
     intent = classification["intent"]
@@ -99,7 +131,7 @@ def process_email(
         except ValueError:
             pass
 
-    # 4. Apply schedule adjustment
+    # 5. Apply schedule adjustment
     actions_taken = []
     if customer and invoice:
         if intent == "will_pay_later":
@@ -112,10 +144,7 @@ def process_email(
         else:
             actions_taken = scheduler.apply_unclear(db, invoice, inbox_id=0)
 
-    # 5. Get settings for reply generation
-    settings = _get_customer_settings(db, customer.id if customer else None)
-
-    # 6. Generate draft reply
+    # 6. Generate draft reply (with agent notes context)
     draft_reply = ""
     if customer and invoice:
         draft_reply = generate_draft_reply(
@@ -126,6 +155,7 @@ def process_email(
             actions_taken=actions_taken,
             promised_date=promised_date_str,
             settings=settings,
+            agent_notes=agent_notes,
         )
 
     # 7. Persist inbox message (create or append to thread)
@@ -173,5 +203,23 @@ def process_email(
         ActionLog.invoice_id == (invoice.id if invoice else None),
     ).update({"inbox_id": msg.id})
     db.commit()
+
+    # 9. Update agent notes with this interaction (async-safe: errors don't break the pipeline)
+    if customer and invoice:
+        try:
+            updated_notes = update_agent_notes(
+                existing_notes=agent_notes,
+                customer_name=customer.name,
+                invoice_number=invoice.invoice_number,
+                email_summary=classification.get("summary", body[:120]),
+                intent=intent,
+                actions_taken=actions_taken,
+                promised_date=promised_date_str,
+                today=date.today(),
+            )
+            _upsert_agent_notes(db, customer.id, updated_notes)
+            print(f"[pipeline] Agent notes updated for customer {customer.id}")
+        except Exception as e:
+            print(f"[pipeline] Failed to update agent notes: {e}")
 
     return msg
