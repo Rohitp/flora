@@ -73,10 +73,8 @@ def process_email(
     if thread_key:
         existing_thread = (
             db.query(InboxMessage)
-            .filter(
-                InboxMessage.thread_key == thread_key,
-                InboxMessage.status != "closed",
-            )
+            .filter(InboxMessage.thread_key == thread_key)
+            .order_by(InboxMessage.received_at.desc())
             .first()
         )
 
@@ -132,7 +130,7 @@ def process_email(
 
     # 7. Persist inbox message (create or append to thread)
     if existing_thread:
-        # Append to existing thread
+        # Append to existing thread (reopen if customer replied to a closed thread)
         existing_thread.body = existing_thread.body + f"\n\n---\n{body}"
         existing_thread.thread_count += 1
         existing_thread.received_at = datetime.utcnow()
@@ -143,6 +141,7 @@ def process_email(
         existing_thread.draft_reply = draft_reply
         existing_thread.action_summary = "; ".join(actions_taken)
         existing_thread.status = "classified" if intent != "unclear" else "needs_review"
+        existing_thread.subject = subject  # update to latest subject (e.g. Re: ...)
         db.commit()
         msg = existing_thread
     else:

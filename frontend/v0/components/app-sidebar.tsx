@@ -61,21 +61,6 @@ export function AppSidebar() {
         })}
       </nav>
 
-      <div className="border-t border-sidebar-border px-4 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-sidebar-accent-foreground">
-            AK
-          </div>
-          <div className="flex-1 truncate">
-            <p className="truncate text-sm font-medium text-sidebar-foreground">
-              Arjun Kumar
-            </p>
-            <p className="truncate text-xs text-sidebar-foreground/50">
-              arjun@company.com
-            </p>
-          </div>
-        </div>
-      </div>
     </aside>
   )
 }

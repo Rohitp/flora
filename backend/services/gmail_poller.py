@@ -60,17 +60,16 @@ def poll_once(mail: imaplib.IMAP4_SSL) -> int:
         return 0
 
     processed = 0
-    db = SessionLocal()
-    try:
-        for msg_id in ids:
+    import re as _re
+    for msg_id in ids:
+        db = SessionLocal()
+        try:
             _, msg_data = mail.fetch(msg_id, "(RFC822)")
             raw = msg_data[0][1]
             msg = email.message_from_bytes(raw)
 
             from_raw = _decode_header_value(msg.get("From", ""))
-            # Extract just the email address
-            import re
-            match = re.search(r'[\w.+-]+@[\w-]+\.[a-z]+', from_raw)
+            match = _re.search(r'[\w.+-]+@[\w-]+\.[a-z]+', from_raw)
             from_email = match.group(0) if match else from_raw
 
             subject = _decode_header_value(msg.get("Subject", "(no subject)"))
@@ -82,10 +81,10 @@ def poll_once(mail: imaplib.IMAP4_SSL) -> int:
             process_email(db=db, from_email=from_email, subject=subject, body=body)
             processed += 1
 
-    except Exception as e:
-        print(f"[gmail_poller] Error processing email: {e}")
-    finally:
-        db.close()
+        except Exception as e:
+            print(f"[gmail_poller] Error processing email {msg_id}: {e}")
+        finally:
+            db.close()
 
     return processed
 

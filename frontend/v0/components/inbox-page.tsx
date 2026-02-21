@@ -188,11 +188,11 @@ function EmailView({
 }) {
   const [draftText, setDraftText] = useState(message.draft_reply ?? "")
   const [sending, setSending] = useState(false)
-  const [sent, setSent] = useState(false)
+
+  const sent = message.status === "closed"
 
   useEffect(() => {
     setDraftText(message.draft_reply ?? "")
-    setSent(false)
   }, [message.id, message.draft_reply])
 
   const intent = message.intent ? INTENT_STYLES[message.intent] : null
@@ -201,7 +201,6 @@ function EmailView({
     setSending(true)
     await onReply(message.ticket_id, draftText)
     setSending(false)
-    setSent(true)
   }
 
   const actionLines = message.action_summary
@@ -209,7 +208,7 @@ function EmailView({
     : []
 
   return (
-    <div className="flex h-full flex-1 flex-col min-w-0">
+    <div className="flex h-full flex-1 flex-col min-w-0 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-6 py-4">
         <div>
@@ -238,24 +237,48 @@ function EmailView({
         </div>
       </div>
 
-      <ScrollArea className="flex-1 px-6 py-4">
-        <div className="space-y-4">
-          {/* Email body */}
-          <div className="rounded-xl border border-border bg-card p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">{message.from_email}</span>
-                <ArrowRight className="h-3 w-3" />
-                <span>collections@demo.com</span>
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+        <div className="space-y-3">
+          {/* Thread messages — split on separator appended by pipeline */}
+          {message.body.split("\n\n---\n").map((segment, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">{message.from_email}</span>
+                  <ArrowRight className="h-3 w-3" />
+                  <span>collections@demo.com</span>
+                </div>
+                {i === 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(message.received_at).toLocaleString()}
+                  </span>
+                )}
               </div>
-              <span className="text-xs text-muted-foreground">
-                {new Date(message.received_at).toLocaleString()}
-              </span>
+              <div className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                {segment.trim()}
+              </div>
             </div>
-            <div className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-              {message.body}
+          ))}
+
+          {/* Sent reply bubble */}
+          {sent && message.draft_reply && (
+            <div className="rounded-xl border border-success/20 bg-success/5 p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">collections@demo.com</span>
+                  <ArrowRight className="h-3 w-3" />
+                  <span>{message.from_email}</span>
+                </div>
+                <Badge variant="outline" className="border-success/20 bg-success/10 text-[10px] font-medium text-success">
+                  <Send className="mr-1 h-2.5 w-2.5" />
+                  Sent
+                </Badge>
+              </div>
+              <div className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                {message.draft_reply}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* AI actions taken */}
           {actionLines.length > 0 && (
@@ -290,49 +313,43 @@ function EmailView({
               </div>
             </div>
           )}
-        </div>
-      </ScrollArea>
 
-      {/* AI draft reply */}
-      {draftText && !sent && (
-        <div className="border-t border-border bg-accent/5 px-6 py-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Bot className="h-3.5 w-3.5 text-accent" />
-            <span className="text-xs font-medium text-accent">AI-suggested reply</span>
-          </div>
-          <textarea
-            value={draftText}
-            onChange={e => setDraftText(e.target.value)}
-            rows={4}
-            className="w-full resize-none rounded-lg border border-accent/20 bg-card p-3 text-xs leading-relaxed text-foreground outline-none focus:border-accent"
-          />
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              onClick={() => setDraftText(message.draft_reply ?? "")}
-              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <RefreshCw className="h-3 w-3" />
-              Reset
-            </button>
-            <div className="flex-1" />
-            <Button
-              size="sm"
-              className="h-7 gap-1.5 text-xs bg-accent text-accent-foreground hover:bg-accent/90"
-              onClick={handleSend}
-              disabled={sending}
-            >
-              <Send className="h-3 w-3" />
-              {sending ? "Sending…" : "Send Reply"}
-            </Button>
-          </div>
+          {/* AI draft reply — inside scroll area so it's never cut off */}
+          {draftText && !sent && (
+            <div className="rounded-xl border border-accent/20 bg-accent/5 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Bot className="h-3.5 w-3.5 text-accent" />
+                <span className="text-xs font-medium text-accent">AI-suggested reply</span>
+              </div>
+              <textarea
+                value={draftText}
+                onChange={e => setDraftText(e.target.value)}
+                rows={6}
+                className="w-full resize-none rounded-lg border border-accent/20 bg-card p-3 text-xs leading-relaxed text-foreground outline-none focus:border-accent"
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  onClick={() => setDraftText(message.draft_reply ?? "")}
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Reset
+                </button>
+                <div className="flex-1" />
+                <Button
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs bg-accent text-accent-foreground hover:bg-accent/90"
+                  onClick={handleSend}
+                  disabled={sending}
+                >
+                  <Send className="h-3 w-3" />
+                  {sending ? "Sending…" : "Send Reply"}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
-      )}
-
-      {sent && (
-        <div className="border-t border-border bg-success/5 px-6 py-4">
-          <p className="text-sm font-medium text-success">Reply sent to {message.from_email}</p>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
