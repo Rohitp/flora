@@ -151,7 +151,7 @@ export function AutomationsPage() {
                 className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-50"
               >
                 <Upload className="mr-1.5 inline h-3 w-3" />
-                {uploading ? "AI is reading…" : rules.length > 0 ? "Replace File" : "Upload Rules"}
+                {uploading ? "Fora is reading…" : rules.length > 0 ? "Replace File" : "Upload Rules"}
               </button>
             </div>
           </div>

@@ -288,9 +288,9 @@ function EmailView({
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-foreground">AI Agent — Actions Taken</p>
+                    <p className="text-sm font-bold text-foreground">Fora — Actions Taken</p>
                     <Badge variant="outline" className="border-accent/20 bg-accent/10 text-[10px] font-medium text-accent">
-                      <Bot className="mr-1 h-3 w-3" />AI Agent
+                      <Bot className="mr-1 h-3 w-3" />Fora
                     </Badge>
                   </div>
                   <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
@@ -318,7 +318,7 @@ function EmailView({
             <div className="rounded-xl border border-accent/20 bg-accent/5 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Bot className="h-3.5 w-3.5 text-accent" />
-                <span className="text-xs font-medium text-accent">AI-suggested reply</span>
+                <span className="text-xs font-medium text-accent">Fora's suggested reply</span>
               </div>
               <textarea
                 value={draftText}

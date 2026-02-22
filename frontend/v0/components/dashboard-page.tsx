@@ -97,7 +97,7 @@ export function DashboardPage() {
             <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
           </span>
           <span className="text-xs text-muted-foreground">
-            AI Agent is active — monitoring inbox and adjusting schedules in real time
+            Fora is active — monitoring inbox and adjusting schedules in real time
           </span>
         </div>
       </div>
@@ -169,7 +169,7 @@ export function DashboardPage() {
           {/* Activity feed */}
           <div className="col-span-2 rounded-xl border border-border bg-card">
             <div className="border-b border-border px-5 py-4">
-              <h2 className="text-sm font-semibold text-foreground">Recent AI Activity</h2>
+              <h2 className="text-sm font-semibold text-foreground">Recent Fora Activity</h2>
               <p className="text-xs text-muted-foreground">Automated actions taken</p>
             </div>
             <div className="divide-y divide-border">

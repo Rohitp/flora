@@ -147,6 +147,7 @@ def process_email(
     # 6. Generate draft reply (with agent notes context)
     draft_reply = ""
     if customer and invoice:
+        days_overdue = (date.today() - invoice.due_date).days if invoice.due_date < date.today() else None
         draft_reply = generate_draft_reply(
             intent=intent,
             customer_name=customer.name,
@@ -156,6 +157,8 @@ def process_email(
             promised_date=promised_date_str,
             settings=settings,
             agent_notes=agent_notes,
+            due_date=str(invoice.due_date),
+            days_overdue=days_overdue,
         )
 
     # 7. Persist inbox message (create or append to thread)

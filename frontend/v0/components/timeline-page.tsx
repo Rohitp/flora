@@ -244,12 +244,12 @@ function EmptyState({ onUploaded }: { onUploaded: () => void }) {
 
         <div className="text-center">
           <p className="text-base font-semibold text-foreground">
-            {uploading ? "AI is reading your rules…" : dragging ? "Drop to upload" : "Drop your rules file here"}
+            {uploading ? "Fora is reading your rules…" : dragging ? "Drop to upload" : "Drop your PDF rules file here"}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             {uploading
-              ? "Claude is parsing your rules and computing schedules for all customers"
-              : "CSV, Excel, or plain text — the AI will figure it out"}
+              ? "Fora is parsing your rules and computing schedules for all customers"
+              : "PDF only — Fora will extract the rules and build the schedule"}
           </p>
         </div>
 
@@ -415,7 +415,7 @@ export function TimelinePage() {
           <div className="flex items-center justify-between border-b border-border bg-indigo-50/60 px-8 py-2.5">
             <div className="flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
-              <span className="text-xs text-indigo-700">Schedule modified by AI agent</span>
+              <span className="text-xs text-indigo-700">Schedule modified by Fora</span>
             </div>
             <a href="/inbox" className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 transition-colors">
               View Inbox Thread <ExternalLink className="h-3 w-3" />
