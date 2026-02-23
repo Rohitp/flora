@@ -1,6 +1,6 @@
 "use client"
 
-import { use } from "react"
+import { use, useEffect, useState } from "react"
 import { notFound } from "next/navigation"
 import { AutomationForm } from "@/components/automations/automation-form"
 import type { Condition, ReminderStep } from "@/components/automations/automation-form"
@@ -9,6 +9,8 @@ import {
   defaultAutomation,
   type Automation,
 } from "@/lib/automations-data"
+import { api, type Rule } from "@/lib/api"
+import { getTemplateForRule } from "@/lib/rule-templates"
 
 /* ------------------------------------------------------------------ */
 /*  Map stored automation data into the form's Condition / Step types */
@@ -45,10 +47,68 @@ function toSteps(automation: Automation): ReminderStep[] {
   }))
 }
 
-const allAutomations = [...sampleAutomations, defaultAutomation]
+function ruleToStep(rule: Rule, idx: number): ReminderStep {
+  const tmpl = getTemplateForRule(rule.day_offset, rule.audience)
+  return {
+    id: `rule-${rule.id}-${idx}`,
+    dayOffset: rule.day_offset,
+    channel: "email" as const,
+    templateName: tmpl.templateName,
+    subject: tmpl.subject,
+    body: tmpl.body,
+  }
+}
 
-function findAutomation(id: string): Automation | undefined {
-  return allAutomations.find((a) => a.id === id)
+const allStaticAutomations = [...sampleAutomations, defaultAutomation]
+
+/* ------------------------------------------------------------------ */
+/*  Default Automation — loaded from backend                          */
+/* ------------------------------------------------------------------ */
+
+function DefaultAutomationEditPage() {
+  const [steps, setSteps] = useState<ReminderStep[] | null>(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    api.rules.list()
+      .then((rules) => {
+        if (rules.length === 0) {
+          // No rules yet — start with empty form
+          setSteps([])
+        } else {
+          setSteps(rules.map(ruleToStep))
+        }
+      })
+      .catch(() => setError(true))
+  }, [])
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">
+          Could not load rules. Make sure the backend is running.
+        </p>
+      </div>
+    )
+  }
+
+  if (steps === null) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    )
+  }
+
+  return (
+    <AutomationForm
+      mode="edit"
+      automationName="Default Automation"
+      initialConditions={[]}
+      initialGroupOperator="AND"
+      initialSteps={steps}
+    />
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -61,11 +121,15 @@ export default function EditAutomationPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = use(params)
-  const automation = findAutomation(id)
 
-  if (!automation) {
-    notFound()
+  // Default automation is always wired to the backend
+  if (id === "default") {
+    return <DefaultAutomationEditPage />
   }
+
+  // Sample automations use static data
+  const automation = allStaticAutomations.find((a) => a.id === id)
+  if (!automation) notFound()
 
   return (
     <AutomationForm

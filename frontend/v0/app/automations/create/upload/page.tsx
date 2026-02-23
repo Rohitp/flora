@@ -6,8 +6,9 @@ import Image from "next/image"
 import { Upload, FileText, Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { api } from "@/lib/api"
 
-type ChatStep = "initial" | "uploaded" | "reviewing" | "parsed" | "confirmed"
+type ChatStep = "initial" | "uploading" | "parsed" | "confirmed" | "error"
 
 interface ChatMessage {
   sender: "fora" | "user"
@@ -65,29 +66,27 @@ function TypingIndicator() {
   )
 }
 
-function ParsedPolicy() {
-  const steps = [
-    { offset: "3 days before due date", action: "Email reminder" },
-    { offset: "On due date", action: "Reminder" },
-    { offset: "7 days overdue", action: "Follow-up" },
-    { offset: "14 days overdue", action: "Final notice" },
-  ]
+function ParsedResult({ rulesCount, invoicesScheduled }: { rulesCount: number; invoicesScheduled: number }) {
   return (
     <div>
-      <p>{"Here's what I understand from your policy:"}</p>
+      <p>{"Here's what I found in your policy document:"}</p>
       <ul className="mt-3 flex flex-col gap-1.5">
-        {steps.map((s) => (
-          <li key={s.offset} className="flex items-baseline gap-2">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#3b82f6]" />
-            <span>
-              <span className="font-medium">{s.offset}</span>
-              {" \u2014 "}
-              {s.action}
-            </span>
-          </li>
-        ))}
+        <li className="flex items-baseline gap-2">
+          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#3b82f6]" />
+          <span>
+            <span className="font-medium">{rulesCount} reminder rules</span>
+            {" extracted from the document"}
+          </span>
+        </li>
+        <li className="flex items-baseline gap-2">
+          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#3b82f6]" />
+          <span>
+            <span className="font-medium">{invoicesScheduled} invoices</span>
+            {" scheduled across all customers"}
+          </span>
+        </li>
       </ul>
-      <p className="mt-4">Does this look correct?</p>
+      <p className="mt-4">{"Shall I activate this as your Default Automation?"}</p>
     </div>
   )
 }
@@ -103,6 +102,8 @@ export default function UploadPolicyPage() {
     },
   ])
   const [newMessageId, setNewMessageId] = useState<string | null>(null)
+  const [rulesCount, setRulesCount] = useState(0)
+  const [invoicesScheduled, setInvoicesScheduled] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -110,9 +111,12 @@ export default function UploadPolicyPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, step])
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+
+    // Reset input so same file can be re-selected
+    e.target.value = ""
 
     const userMsg: ChatMessage = {
       id: "user-upload",
@@ -126,53 +130,65 @@ export default function UploadPolicyPage() {
     }
     setMessages((prev) => [...prev, userMsg])
     setNewMessageId("user-upload")
-    setStep("uploaded")
+    setStep("uploading")
 
-    setTimeout(() => setStep("reviewing"), 600)
+    try {
+      const result = await api.rules.upload(file)
 
-    setTimeout(() => {
+      setRulesCount(result.rules_count)
+      setInvoicesScheduled(result.invoices_scheduled)
+
       const parsedMsg: ChatMessage = {
         id: "fora-parsed",
         sender: "fora",
-        content: <ParsedPolicy />,
+        content: (
+          <ParsedResult
+            rulesCount={result.rules_count}
+            invoicesScheduled={result.invoices_scheduled}
+          />
+        ),
       }
       setMessages((prev) => [...prev, parsedMsg])
       setNewMessageId("fora-parsed")
       setStep("parsed")
-    }, 2600)
+    } catch (err) {
+      const errMsg: ChatMessage = {
+        id: "fora-error",
+        sender: "fora",
+        content: "Sorry, I couldn't read that document. Please make sure it's a valid PDF and try again.",
+      }
+      setMessages((prev) => [...prev, errMsg])
+      setNewMessageId("fora-error")
+      setStep("error")
+    }
   }
 
   function handleConfirm() {
     const confirmMsg: ChatMessage = {
       id: "user-confirm",
       sender: "user",
-      content: "Yes, looks right",
+      content: "Yes, activate it",
     }
     setMessages((prev) => [...prev, confirmMsg])
     setNewMessageId("user-confirm")
-    setStep("confirmed")
-    setTimeout(() => router.push("/automations/create/summary"), 800)
+
+    const doneMsg: ChatMessage = {
+      id: "fora-done",
+      sender: "fora",
+      content: "Done! Your Default Automation is now live. Redirecting you to Invoice Reminders…",
+    }
+    setTimeout(() => {
+      setMessages((prev) => [...prev, doneMsg])
+      setNewMessageId("fora-done")
+      setStep("confirmed")
+    }, 300)
+
+    setTimeout(() => router.push("/automations"), 1800)
   }
 
-  function handleEdit() {
-    const editMsg: ChatMessage = {
-      id: "user-edit",
-      sender: "user",
-      content: "Edit timing",
-    }
-    setMessages((prev) => [...prev, editMsg])
-    setNewMessageId("user-edit")
-    setTimeout(() => {
-      const ackMsg: ChatMessage = {
-        id: "fora-edit-ack",
-        sender: "fora",
-        content:
-          "No problem! Timing customization will be available in the next step. For now, let\u2019s proceed with this configuration.",
-      }
-      setMessages((prev) => [...prev, ackMsg])
-      setNewMessageId("fora-edit-ack")
-      setStep("parsed")
-    }, 800)
+  function handleRetry() {
+    setStep("initial")
+    fileInputRef.current?.click()
   }
 
   return (
@@ -198,7 +214,7 @@ export default function UploadPolicyPage() {
               isNew={msg.id === newMessageId}
             />
           ))}
-          {step === "reviewing" && <TypingIndicator />}
+          {step === "uploading" && <TypingIndicator />}
           <div ref={chatEndRef} />
         </div>
       </div>
@@ -223,18 +239,16 @@ export default function UploadPolicyPage() {
                   <p className="text-sm font-medium text-[#334155]">
                     Upload your policy document
                   </p>
-                  <p className="text-xs text-[#94a3b8]">
-                    PDF, DOC, DOCX, or TXT
-                  </p>
+                  <p className="text-xs text-[#94a3b8]">PDF, DOC, DOCX, or TXT</p>
                 </div>
               </button>
             </div>
           )}
 
-          {(step === "uploaded" || step === "reviewing") && (
+          {step === "uploading" && (
             <div className="flex items-center gap-2.5 text-sm text-[#64748b]">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Reviewing your policy...</span>
+              <span>Reading your policy with AI…</span>
             </div>
           )}
 
@@ -246,15 +260,15 @@ export default function UploadPolicyPage() {
                 className="gap-1.5 bg-[#3b82f6] text-xs hover:bg-[#2563eb]"
               >
                 <Check className="h-3.5 w-3.5" />
-                Yes, looks right
+                Yes, activate it
               </Button>
               <Button
-                onClick={handleEdit}
+                onClick={handleRetry}
                 variant="outline"
                 size="sm"
                 className="text-xs"
               >
-                Edit timing
+                Upload different file
               </Button>
             </div>
           )}
@@ -262,7 +276,26 @@ export default function UploadPolicyPage() {
           {step === "confirmed" && (
             <div className="flex items-center gap-2.5 text-sm text-[#64748b]">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Setting up your configuration...</span>
+              <span>Activating your automation…</span>
+            </div>
+          )}
+
+          {step === "error" && (
+            <div className="flex items-center gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.txt"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <Button
+                onClick={handleRetry}
+                size="sm"
+                className="text-xs"
+              >
+                Try again
+              </Button>
             </div>
           )}
         </div>

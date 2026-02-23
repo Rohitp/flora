@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +24,7 @@ import {
   defaultAutomation,
   getEmailSummary,
 } from "@/lib/automations-data"
+import { api, type Rule } from "@/lib/api"
 
 /* ------------------------------------------------------------------ */
 /*  Status Toggle                                                      */
@@ -177,9 +178,11 @@ function AutomationRow({
 function DefaultAutomationSection({
   automation,
   onStatusChange,
+  isLive,
 }: {
   automation: Automation
   onStatusChange: (id: string, status: "active" | "paused") => void
+  isLive: boolean
 }) {
   return (
     <div className="mt-6">
@@ -188,6 +191,12 @@ function DefaultAutomationSection({
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Default Automation
         </h2>
+        {isLive && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-[#22c55e]/10 px-2 py-0.5 text-[10px] font-semibold text-[#16a34a]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e]" />
+            Live
+          </span>
+        )}
       </div>
       <div className="rounded-lg border border-dashed border-border bg-muted/30 px-5 py-4">
         <p className="text-xs leading-relaxed text-muted-foreground">
@@ -250,9 +259,32 @@ function EmptyState() {
 /* ================================================================== */
 /*  MAIN PAGE                                                          */
 /* ================================================================== */
+function rulesToEmailSteps(rules: Rule[]) {
+  return rules.map((r) => ({
+    label: r.name,
+    dayOffset: r.day_offset,
+  }))
+}
+
 export function AutomationsPage() {
   const [automations, setAutomations] = useState<Automation[]>(sampleAutomations)
   const [defaultAuto, setDefaultAuto] = useState<Automation>(defaultAutomation)
+  const [liveRules, setLiveRules] = useState<Rule[]>([])
+
+  useEffect(() => {
+    api.rules.list().then((rules) => {
+      setLiveRules(rules)
+      if (rules.length > 0) {
+        setDefaultAuto((prev) => ({
+          ...prev,
+          status: "active",
+          emailSteps: rulesToEmailSteps(rules),
+        }))
+      }
+    }).catch(() => {
+      // backend not running — keep static defaults
+    })
+  }, [])
 
   function handleStatusChange(id: string, status: "active" | "paused") {
     if (id === "default") {
@@ -305,6 +337,7 @@ export function AutomationsPage() {
           <DefaultAutomationSection
             automation={defaultAuto}
             onStatusChange={handleStatusChange}
+            isLive={liveRules.length > 0}
           />
 
           <div className="mt-6 flex items-center gap-1.5">
