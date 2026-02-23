@@ -81,6 +81,8 @@ def poll_once(mail: imaplib.IMAP4_SSL) -> int:
             process_email(db=db, from_email=from_email, subject=subject, body=body)
             processed += 1
 
+        except (imaplib.IMAP4.abort, imaplib.IMAP4.error):
+            raise  # let _poller_loop handle reconnect
         except Exception as e:
             print(f"[gmail_poller] Error processing email {msg_id}: {e}")
         finally:
