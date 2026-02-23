@@ -1,6 +1,6 @@
 # AR Prototype — Implementation Plan
 
-_Last updated: 2026-02-21_
+_Last updated: 2026-02-23_
 
 ---
 
@@ -249,6 +249,62 @@ All inbox features built as part of Phase 3/4:
 
 ---
 
+## Phase 8 — Agent Context + Fora Skills
+**Status: COMPLETE ✓**
+
+### 8.1 — Agent context fixes ✓
+- [x] `gmail_poller.py` — IMAP abort errors now re-raised correctly so outer reconnect logic runs
+- [x] `classifier.py` — `thread_history` + `skill_context` parameters added
+- [x] `reply_generator.py` — `customer_message`, `thread_history`, `skill_context`, `skill_reply` parameters; hardcoded sign-off removed; skill sections moved to end of prompt to override earlier defaults
+- [x] `pipeline.py` — builds `thread_history` before appending new message; passes actual email body to reply generator; reads + concatenates all 4 skill contexts; injects into both classifier and reply generator
+- [x] `seed.py` — 3 new global settings: `company_currency`, `payment_terms_days`, `accepted_payment_methods`
+
+### 8.2 — Fora Skills backend ✓
+- [x] `backend/routes/skills.py` — `GET /skills`, `PUT /skills/{id}`, `DELETE /skills/{id}/context`
+- [x] 4 skill definitions: `classification`, `promise_to_pay`, `dispute`, `reply`
+- [x] Contexts stored in settings table as `skill_context_{id}`, scope=global
+- [x] Registered in `main.py`
+
+### 8.3 — Fora Skills frontend ✓
+- [x] `frontend/v0/components/fora-skills-page.tsx` — 4 skill cards, inline preview, add/edit/clear dialog
+- [x] `frontend/v0/app/skills/page.tsx` — route wrapper
+- [x] `frontend/v0/components/icons/fora-bee-icon.tsx` — SVG bee icon
+- [x] `frontend/v0/lib/api.ts` — `Skill` interface, `api.skills` namespace
+- [x] Sidebar: Fora Skills link added to receivables nav
+
+---
+
+## Phase 9 — Billing Home + Two-Product App
+**Status: COMPLETE ✓**
+
+### 9.1 — Billing home page ✓
+- [x] `frontend/v0/app/page.tsx` — Chargebee billing home (metric cards, time filters, chart placeholders)
+- [x] `frontend/v0/app/dashboard/page.tsx` — receivables dashboard moved here from `/`
+- [x] `frontend/v0/components/metric-card.tsx` — reusable metric card component
+
+### 9.2 — Two-product sidebar ✓
+- [x] `frontend/v0/components/app-sidebar.tsx` — full rewrite as Chargebee-style dark sidebar
+- [x] Product switcher: Billing (orange `#ff6c37`) ↔ Receivables (blue `#3b82f6`)
+- [x] URL-based product detection: `pathname === "/" || pathname.startsWith("/billing")` → billing
+- [x] Full billing nav with collapsible groups (Invoices & Credit Notes, Collections NEW, etc.)
+- [x] Full receivables nav (Home→/dashboard, Inbox, Invoices, Automations, Fora Skills, Reports, Settings)
+- [x] `frontend/v0/components/app-shell.tsx` — `overflow-y-auto` on main for sub-page scrolling
+
+### 9.3 — Collections sub-pages ✓
+- [x] `frontend/v0/lib/collections-data.ts` — static snapshot data
+- [x] `frontend/v0/lib/forecast-data.ts` — deterministic forecast engine (1,250 subscriptions)
+- [x] `frontend/v0/components/forecast/kpi-strip.tsx`
+- [x] `frontend/v0/components/forecast/forecast-chart.tsx` — stacked bar + MRR line, recharts
+- [x] `frontend/v0/components/forecast/monthly-table.tsx` — clickable drilldown rows
+- [x] `frontend/v0/components/forecast/month-drilldown.tsx` — side sheet, invoice + subscription tabs
+- [x] `frontend/v0/components/forecast/forecast-settings.tsx` — basis toggle, billing config toggles
+- [x] `frontend/v0/components/forecast/export-modal.tsx`
+- [x] `frontend/v0/app/billing/collections/page.tsx` — Collections Overview
+- [x] `frontend/v0/app/billing/cash-flow/page.tsx` — Collection Forecast
+- [x] Sidebar Collections links updated: Overview → `/billing/collections`, Collection Forecast → `/billing/cash-flow`
+
+---
+
 ## Phase 7 — Tests
 **Status: COMPLETE ✓**
 
@@ -296,6 +352,9 @@ Run with: `uv run pytest tests/ -v`
 | GET | `/dashboard/summary` | ✓ |
 | GET | `/dashboard/action-log` | ✓ |
 | POST | `/admin/reset` | ✓ |
+| GET | `/skills` | ✓ |
+| PUT | `/skills/{id}` | ✓ |
+| DELETE | `/skills/{id}/context` | ✓ |
 
 ---
 

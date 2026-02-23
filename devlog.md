@@ -212,7 +212,8 @@ flora/
 │   │   ├── rules.py             # GET /rules, POST /rules/upload, POST /rules/{id}/pause
 │   │   ├── inbox.py             # GET /inbox, GET /inbox/{id}|{id}/thread, POST simulate|send-reply
 │   │   ├── dashboard.py         # GET /dashboard/summary, GET /dashboard/action-log
-│   │   └── admin.py             # POST /admin/reset
+│   │   ├── admin.py             # POST /admin/reset
+│   │   └── skills.py            # GET /skills, PUT /skills/{id}, DELETE /skills/{id}/context
 │   ├── services/
 │   │   ├── rules_agent.py       # Claude: PDF document block → parse rules + compute full schedule
 │   │   ├── classifier.py        # Claude: classify email intent → structured JSON
@@ -234,22 +235,41 @@ flora/
 ├── frontend/
 │   └── v0/
 │       ├── app/
-│       │   ├── page.tsx                  # → DashboardPage
-│       │   ├── inbox/page.tsx            # → InboxPage
-│       │   ├── timeline/page.tsx         # → TimelinePage
-│       │   ├── automations/page.tsx      # → AutomationsPage
-│       │   └── settings/page.tsx         # → SettingsPage
+│       │   ├── page.tsx                          # Billing home (metric cards, charts)
+│       │   ├── dashboard/page.tsx                # Receivables dashboard (moved from /)
+│       │   ├── billing/
+│       │   │   ├── collections/page.tsx          # Collections Overview
+│       │   │   └── cash-flow/page.tsx            # Collection Forecast
+│       │   ├── inbox/page.tsx
+│       │   ├── timeline/page.tsx
+│       │   ├── automations/page.tsx
+│       │   ├── skills/page.tsx                   # Fora Skills
+│       │   └── settings/page.tsx
 │       ├── components/
-│       │   ├── app-shell.tsx             # unchanged
-│       │   ├── app-sidebar.tsx           # Settings link fixed to /settings
-│       │   ├── dashboard-page.tsx        # wired to API, 10s polling
-│       │   ├── timeline-page.tsx         # wired to API, empty state, drag-drop upload
-│       │   ├── inbox-page.tsx            # wired to API, 10s polling, send reply, simulator
-│       │   ├── automations-page.tsx      # wired to API, upload UI
-│       │   └── settings-page.tsx         # reset button with confirmation
+│       │   ├── app-shell.tsx                     # overflow-y-auto on main content
+│       │   ├── app-sidebar.tsx                   # dark sidebar, product switcher, billing+receivables nav
+│       │   ├── metric-card.tsx                   # billing home metric card
+│       │   ├── fora-skills-page.tsx              # 4 skill cards, edit dialog
+│       │   ├── receivables-transition.tsx        # animated overlay (routes to /dashboard)
+│       │   ├── dashboard-page.tsx                # wired to API, 10s polling
+│       │   ├── timeline-page.tsx                 # wired to API, empty state, drag-drop upload
+│       │   ├── inbox-page.tsx                    # wired to API, 10s polling, send reply, simulator
+│       │   ├── automations-page.tsx              # wired to API, upload UI
+│       │   ├── settings-page.tsx                 # reset button with confirmation
+│       │   ├── icons/
+│       │   │   └── fora-bee-icon.tsx
+│       │   └── forecast/
+│       │       ├── kpi-strip.tsx
+│       │       ├── forecast-chart.tsx            # stacked bar + MRR line, recharts
+│       │       ├── monthly-table.tsx             # clickable drilldown rows
+│       │       ├── month-drilldown.tsx           # side sheet, invoice + subscription tabs
+│       │       ├── forecast-settings.tsx         # basis toggle, billing config toggles
+│       │       └── export-modal.tsx
 │       └── lib/
-│           ├── api.ts                    # typed fetch client
-│           └── data.ts                   # kept — reference types only
+│           ├── api.ts                            # typed fetch client + api.skills namespace
+│           ├── collections-data.ts               # static collections snapshot
+│           ├── forecast-data.ts                  # deterministic forecast engine (1,250 subs)
+│           └── data.ts                           # kept — reference types only
 ├── designs/                     # Reference screenshots (untouched)
 ├── implementation_plan.md
 ├── devlog.md
@@ -257,6 +277,96 @@ flora/
 └── start.sh                     # uv sync + uv run + pnpm dev
 
 ```
+
+---
+
+---
+
+## 2026-02-23 — Agent context + generic question handling
+
+### Fix: Gmail poller swallowing IMAP disconnects
+
+The inner `except Exception` block in the email processing loop was catching `imaplib.IMAP4.abort`, preventing the outer `_poller_loop` reconnect logic from ever running. Fixed by adding a `except (imaplib.IMAP4.abort, imaplib.IMAP4.error): raise` before the generic handler so IMAP errors propagate upward correctly.
+
+### Fix: Agent had no context over past interactions
+
+Two root causes:
+1. `generate_draft_reply` never received the actual customer email body — Claude was generating replies without reading what the customer wrote.
+2. No thread history was passed to the classifier or reply generator — the agent had no memory of prior exchanges in the same thread.
+
+**Changes:**
+- `classifier.py`: Added `thread_history` and `skill_context` parameters. Thread history injected into user message so classifier understands conversational context.
+- `reply_generator.py`: Added `customer_message`, `thread_history`, `skill_context`, `skill_reply` parameters. Removed hardcoded `Sign off as 'Collections Team'` from system prompt.
+- `pipeline.py`: Builds `thread_history` from `existing_thread.body + draft_reply` _before_ appending the new message. Passes `customer_message` (actual email text) to reply generator.
+
+### Fix: Generic question handling (not just currency)
+
+Rather than hardcoding specific answers (e.g. "USD"), exposed relevant account settings to the reply generator: `company_currency`, `payment_terms_days`, `accepted_payment_methods`. Claude reads these from the settings table and answers any policy question the customer asks. Three new global settings added to `seed.py` and inserted into the live DB.
+
+---
+
+## 2026-02-23 — Fora Skills
+
+### Decision: Skill contexts stored as global settings, injected into every pipeline call
+
+Four skills (Classification, Promise to Pay, Dispute Handling, Reply Tone & Policy) each have an optional free-text `context` field. Stored in the `settings` table with keys `skill_context_{id}`.
+
+**All skill contexts are injected into both the classifier and reply generator on every email regardless of intent.** This is intentional for the demo — the classifier is simple enough that customers can phrase emails in ways that break it, so having all business rules available regardless of classification is more robust.
+
+**Prompt ordering matters:** Skill sections are appended to the _end_ of the user message so they override any earlier defaults. Claude reads prompts sequentially, and a sign-off rule defined in a skill context was being overridden by a hardcoded sign-off earlier in the prompt. Moving skill sections last fixed this.
+
+### New route: `GET|PUT|DELETE /skills`
+
+- `GET /skills` — returns 4 skill definitions with saved context from settings
+- `PUT /skills/{id}` — saves context as `Setting(scope="global", key="skill_context_{id}")`
+- `DELETE /skills/{id}/context` — clears context
+
+### New frontend: Fora Skills page (`/skills`)
+
+- 4 skill cards with icon, description, inline context preview
+- "Add rules" / "Edit rules" / "Clear" actions per card
+- Dialog editor with per-skill placeholder examples
+- ForaBeeIcon SVG copied from extra-fe
+
+---
+
+## 2026-02-23 — Billing home + two-product sidebar
+
+### Decision: Integrate extra-fe billing home as the default landing at `/`
+
+Rather than running a separate app for the billing product, the extra-fe billing home page was integrated directly into the v0 app on port 3000. The receivables dashboard moved from `/` to `/dashboard`.
+
+**Product detection** is URL-based — no state, no context:
+- `pathname === "/"` or `pathname.startsWith("/billing")` → billing sidebar
+- everything else → receivables sidebar
+
+**Chart bars** use hardcoded `bg-[#3b82f6]/25` (not `bg-primary/20`) so they're always blue regardless of theme.
+
+**Sidebar** is a full Chargebee-style dark sidebar (`bg-[#1b2030]`) with a product switcher dropdown (Billing ↔ Receivables), org selector, search shortcut, and collapsible nav groups (Invoices & Credit Notes, Collections with NEW badge, etc.).
+
+### New route: `GET /` — Billing home
+
+MetricCard grid (MRR, active subscriptions, net billing, net payments, unpaid invoices), time filter strip, two chart placeholders (Total Billing, Total New Billing).
+
+---
+
+## 2026-02-23 — Collections pages (billing sub-app)
+
+### Collections Overview (`/billing/collections`) and Collection Forecast (`/billing/cash-flow`)
+
+Ported from `extra-fe` as self-contained billing pages — no cross-product navigation. Pages remain in the billing context; the sidebar stays on the billing nav when these routes are active.
+
+**Data layer:**
+- `lib/collections-data.ts` — static snapshot (ageing buckets, DSO, open invoice counts)
+- `lib/forecast-data.ts` — deterministic forecast engine: 1,250 seeded subscriptions (850 monthly, 250 quarterly, 150 annual), seeded PRNG for reproducibility, bucketed by invoice date or expected collection date
+
+**Collections Overview features:** Total outstanding / overdue / DSO hero card, ageing breakdown bar (0–30d blue, 31–60d amber, 61–90d orange, 90+d red), 4 open-item cards with "View list" dialogs, informational "Automate Your Collections" panel.
+
+**Collection Forecast features:** 5 KPI cards (total expected, this month, next month, active subscriptions, normalized MRR), stacked bar chart with MRR reference line (group by frequency / plan / product family), monthly forecast table with clickable drilldown, month drilldown side sheet (invoice-level and subscription-level tabs with search + filters), forecast settings sheet (basis toggle, 7 billing config toggles, segment filters, recompute), CSV export modal.
+
+**Forecast sub-components** in `components/forecast/`: `kpi-strip`, `forecast-chart`, `monthly-table`, `month-drilldown`, `forecast-settings`, `export-modal`.
+
+**Sidebar fix:** Active product detection updated from `pathname === "/"` to `pathname === "/" || pathname.startsWith("/billing")` so all billing sub-pages keep the billing sidebar active.
 
 ---
 

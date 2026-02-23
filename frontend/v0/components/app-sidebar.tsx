@@ -44,8 +44,8 @@ const billingNavItems: NavItem[] = [
     icon: <Banknote className="h-4 w-4" />,
     isNew: true,
     children: [
-      { label: "Overview",            href: "#" },
-      { label: "Collection Forecast", href: "#" },
+      { label: "Overview",            href: "/billing/collections" },
+      { label: "Collection Forecast", href: "/billing/cash-flow" },
       { label: "Offline Dunning",     href: "#" },
     ],
   },
@@ -220,7 +220,7 @@ export function AppSidebar() {
   const headerRef = useRef<HTMLDivElement>(null)
 
   const activeProduct: Product = useMemo(
-    () => (pathname === "/" ? "billing" : "receivables"),
+    () => (pathname === "/" || pathname.startsWith("/billing") ? "billing" : "receivables"),
     [pathname],
   )
 
