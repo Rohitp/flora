@@ -1,192 +1,320 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import { Upload, Mail, ArrowUpRight, Users, Building, CheckCircle2, Bot, Minus } from "lucide-react"
+import { useState } from "react"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Plus,
+  Mail,
+  MoreHorizontal,
+  ExternalLink,
+  Shield,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { api, type Rule } from "@/lib/api"
+import {
+  type Automation,
+  sampleAutomations,
+  defaultAutomation,
+  getEmailSummary,
+} from "@/lib/automations-data"
 
-function DayBadge({ days }: { days: number }) {
-  const label = days === 0 ? "Due date" : days < 0 ? `${days}d` : `+${days}d`
-  const color =
-    days < 0   ? "bg-chart-1/10 text-chart-1 border-chart-1/20" :
-    days === 0 ? "bg-chart-3/10 text-chart-3 border-chart-3/20" :
-    days <= 15 ? "bg-chart-3/10 text-chart-3 border-chart-3/20" :
-                 "bg-destructive/10 text-destructive border-destructive/20"
+/* ------------------------------------------------------------------ */
+/*  Status Toggle                                                      */
+/* ------------------------------------------------------------------ */
+function StatusToggle({
+  status,
+  onChange,
+}: {
+  status: "active" | "paused"
+  onChange: (s: "active" | "paused") => void
+}) {
+  const isActive = status === "active"
   return (
-    <Badge variant="outline" className={cn("font-mono text-[11px] font-medium", color)}>{label}</Badge>
+    <button
+      onClick={() => onChange(isActive ? "paused" : "active")}
+      className={cn(
+        "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors",
+        isActive ? "bg-[#22c55e]" : "bg-muted-foreground/20"
+      )}
+      role="switch"
+      aria-checked={isActive}
+    >
+      <span
+        className={cn(
+          "pointer-events-none block h-3.5 w-3.5 rounded-full bg-card shadow-sm transition-transform",
+          isActive ? "translate-x-[18px]" : "translate-x-[3px]"
+        )}
+      />
+    </button>
   )
 }
 
-function AudienceBadge({ audience }: { audience: string }) {
+/* ------------------------------------------------------------------ */
+/*  Segment Chips                                                      */
+/* ------------------------------------------------------------------ */
+function SegmentChips({ automation }: { automation: Automation }) {
+  if (automation.segmentFilters.length === 0) {
+    return (
+      <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+        All Customers
+      </span>
+    )
+  }
   return (
-    <Badge variant="outline" className={cn(
-      "text-[11px] font-medium",
-      audience === "Customer"
-        ? "border-chart-1/20 bg-chart-1/5 text-chart-1"
-        : "border-chart-5/20 bg-chart-5/5 text-chart-5",
-    )}>
-      {audience === "Customer" ? <Users className="mr-1 h-3 w-3" /> : <Building className="mr-1 h-3 w-3" />}
-      {audience}
-    </Badge>
-  )
-}
-
-function RuleRow({ rule }: { rule: Rule }) {
-  return (
-    <tr className="border-b border-border transition-colors hover:bg-muted/40">
-      <td className="px-5 py-3.5">
-        <div className="flex items-center gap-3">
-          <div className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-            rule.type === "email" ? "bg-chart-1/10 text-chart-1" : "bg-chart-5/10 text-chart-5",
-          )}>
-            {rule.type === "email" ? <Mail className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
-          </div>
-          <span className={cn("text-sm font-medium", rule.status === "paused" ? "text-muted-foreground" : "text-foreground")}>
-            {rule.name}
-          </span>
-        </div>
-      </td>
-      <td className="px-5 py-3.5"><DayBadge days={rule.day_offset} /></td>
-      <td className="px-5 py-3.5"><AudienceBadge audience={rule.audience} /></td>
-      <td className="px-5 py-3.5"><span className="text-sm text-muted-foreground">{rule.frequency}</span></td>
-      <td className="px-5 py-3.5">
-        <Badge variant="outline" className={cn(
-          "text-[11px]",
-          rule.status === "active" ? "bg-success/10 text-success border-success/20" : "bg-muted text-muted-foreground border-border",
-        )}>
-          {rule.status}
-        </Badge>
-      </td>
-      <td className="px-5 py-3.5">
-        <span className="text-xs text-muted-foreground">
-          {new Date(rule.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+    <div className="flex flex-wrap items-center gap-1.5">
+      {automation.segmentFilters.map((f, idx) => (
+        <span
+          key={idx}
+          className="inline-flex items-center rounded-md border border-border bg-card px-2 py-0.5 text-[11px] font-medium text-foreground"
+        >
+          {f.field}{" "}
+          <span className="mx-0.5 text-muted-foreground">{f.operator}</span>{" "}
+          {f.value}
         </span>
-      </td>
-      <td className="px-5 py-3.5">
-        <span className="text-sm text-muted-foreground"><Minus className="inline h-3.5 w-3.5" /></span>
-      </td>
-    </tr>
+      ))}
+    </div>
   )
 }
 
+/* ------------------------------------------------------------------ */
+/*  Timeline Summary                                                   */
+/* ------------------------------------------------------------------ */
+function TimelineSummary({ automation }: { automation: Automation }) {
+  const summary = getEmailSummary(automation.emailSteps)
+  if (summary.count === 0) return null
+  return (
+    <div className="text-right">
+      <p className="text-xs font-medium text-foreground">
+        {summary.count} {summary.count === 1 ? "email" : "emails"} scheduled
+      </p>
+      <p className="mt-0.5 text-[11px] text-muted-foreground">
+        First: {summary.firstLabel}
+      </p>
+      <p className="text-[11px] text-muted-foreground">
+        Last: {summary.lastLabel}
+      </p>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Overflow Menu                                                      */
+/* ------------------------------------------------------------------ */
+function OverflowMenu({ automationId }: { automationId: string }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+          <MoreHorizontal className="h-4 w-4" />
+          <span className="sr-only">Automation actions</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-36">
+        <DropdownMenuItem asChild>
+          <Link href={`/automations/${automationId}/edit`}>Edit</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem>Duplicate</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Automation Row                                                     */
+/* ------------------------------------------------------------------ */
+function AutomationRow({
+  automation,
+  onStatusChange,
+}: {
+  automation: Automation
+  onStatusChange: (id: string, status: "active" | "paused") => void
+}) {
+  return (
+    <div className="group flex items-start justify-between gap-6 rounded-lg border border-border bg-card px-5 py-4 transition-colors hover:shadow-[0_1px_3px_0_rgba(0,0,0,0.04)]">
+      <div className="min-w-0 flex-1">
+        <Link
+          href={`/automations/${automation.id}/edit`}
+          className="text-sm font-semibold text-foreground hover:underline"
+        >
+          {automation.name}
+        </Link>
+        <div className="mt-2">
+          <SegmentChips automation={automation} />
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-start gap-5">
+        <TimelineSummary automation={automation} />
+        <div className="flex items-center gap-2.5 pt-0.5">
+          <div className="flex flex-col items-center gap-0.5">
+            <StatusToggle
+              status={automation.status}
+              onChange={(s) => onStatusChange(automation.id, s)}
+            />
+            <span className="text-[10px] font-medium text-muted-foreground">
+              {automation.status === "active" ? "Active" : "Paused"}
+            </span>
+          </div>
+          <OverflowMenu automationId={automation.id} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Default Automation Section                                         */
+/* ------------------------------------------------------------------ */
+function DefaultAutomationSection({
+  automation,
+  onStatusChange,
+}: {
+  automation: Automation
+  onStatusChange: (id: string, status: "active" | "paused") => void
+}) {
+  return (
+    <div className="mt-6">
+      <div className="mb-3 flex items-center gap-2">
+        <Shield className="h-3.5 w-3.5 text-muted-foreground/60" />
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Default Automation
+        </h2>
+      </div>
+      <div className="rounded-lg border border-dashed border-border bg-muted/30 px-5 py-4">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Applies to customers who do not match any other automation rules.
+        </p>
+        <div className="mt-3 flex items-start justify-between gap-6">
+          <div>
+            <p className="text-sm font-semibold text-foreground">{automation.name}</p>
+            <div className="mt-1.5">
+              <SegmentChips automation={automation} />
+            </div>
+          </div>
+          <div className="flex shrink-0 items-start gap-5">
+            <TimelineSummary automation={automation} />
+            <div className="flex items-center gap-2.5 pt-0.5">
+              <div className="flex flex-col items-center gap-0.5">
+                <StatusToggle
+                  status={automation.status}
+                  onChange={(s) => onStatusChange(automation.id, s)}
+                />
+                <span className="text-[10px] font-medium text-muted-foreground">
+                  {automation.status === "active" ? "Active" : "Paused"}
+                </span>
+              </div>
+              <OverflowMenu automationId={automation.id} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Empty State                                                        */
+/* ------------------------------------------------------------------ */
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+        <Mail className="h-7 w-7 text-muted-foreground/60" />
+      </div>
+      <h2 className="mt-5 text-base font-semibold text-foreground">
+        No reminder automations configured
+      </h2>
+      <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
+        Create automated email sequences to follow up on unpaid invoices based on
+        customer segments and due dates.
+      </p>
+      <Button size="sm" className="mt-6 gap-1.5" asChild>
+        <Link href="/automations/create">
+          <Plus className="h-3.5 w-3.5" />
+          Create your first automation
+        </Link>
+      </Button>
+    </div>
+  )
+}
+
+/* ================================================================== */
+/*  MAIN PAGE                                                          */
+/* ================================================================== */
 export function AutomationsPage() {
-  const [rules, setRules] = useState<Rule[]>([])
-  const [uploading, setUploading] = useState(false)
-  const [uploadedAt, setUploadedAt] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [automations, setAutomations] = useState<Automation[]>(sampleAutomations)
+  const [defaultAuto, setDefaultAuto] = useState<Automation>(defaultAutomation)
 
-  const loadRules = useCallback(async () => {
-    const loaded = await api.rules.list()
-    setRules(loaded)
-    if (loaded.length > 0 && !uploadedAt) {
-      setUploadedAt(loaded[0].created_at)
+  function handleStatusChange(id: string, status: "active" | "paused") {
+    if (id === "default") {
+      setDefaultAuto((prev) => ({ ...prev, status }))
+      return
     }
-  }, [uploadedAt])
-
-  useEffect(() => { loadRules() }, [loadRules])
-
-  const handleFile = async (file: File) => {
-    setUploading(true)
-    setError(null)
-    try {
-      await api.rules.upload(file)
-      await loadRules()
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Upload failed")
-    } finally {
-      setUploading(false)
-    }
+    setAutomations((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, status } : a))
+    )
   }
 
-  const customerFacing = rules.filter(r => r.audience === "Customer").length
-  const internalCount  = rules.filter(r => r.audience === "Internal").length
-
-  const uploadedAtFormatted = uploadedAt
-    ? new Date(uploadedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
-    : null
+  const hasAutomations = automations.length > 0
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-background">
-      <div className="border-b border-border px-8 py-6">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">Automations</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Configure collection automation rules and schedules</p>
+    <div className="p-6">
+      {/* Header */}
+      <div className="mb-5 flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            Invoice Reminders
+          </h1>
+          <p className="mt-1 max-w-xl text-xs text-muted-foreground">
+            Automate reminder emails based on customer segments and due dates.
+          </p>
+        </div>
+        {hasAutomations && (
+          <Button size="sm" className="gap-1.5 text-xs" asChild>
+            <Link href="/automations/create">
+              <Plus className="h-3.5 w-3.5" />
+              Create Automation
+            </Link>
+          </Button>
+        )}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="px-8 py-6">
-          {/* Upload bar */}
-          <div className="flex items-center justify-between rounded-xl border border-dashed border-border bg-muted/20 px-5 py-3">
-            <div className="flex items-center gap-2.5">
-              {rules.length > 0 ? (
-                <>
-                  <CheckCircle2 className="h-4 w-4 text-success" />
-                  <span className="text-sm text-foreground font-medium">{rules.length} rules loaded</span>
-                  {uploadedAtFormatted && (
-                    <span className="text-xs text-muted-foreground">— last updated {uploadedAtFormatted}</span>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">No rules loaded — upload a file to get started</span>
-                </>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {error && <span className="text-xs text-destructive">{error}</span>}
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".pdf"
-                className="hidden"
-                onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
+      {!hasAutomations ? (
+        <EmptyState />
+      ) : (
+        <div>
+          <div className="flex flex-col gap-3">
+            {automations.map((automation) => (
+              <AutomationRow
+                key={automation.id}
+                automation={automation}
+                onStatusChange={handleStatusChange}
               />
-              <button
-                onClick={() => inputRef.current?.click()}
-                disabled={uploading}
-                className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-              >
-                <Upload className="mr-1.5 inline h-3 w-3" />
-                {uploading ? "Fora is reading…" : rules.length > 0 ? "Replace File" : "Upload Rules"}
-              </button>
-            </div>
+            ))}
           </div>
 
-          {/* Rules table */}
-          {rules.length > 0 && (
-            <div className="mt-6 overflow-hidden rounded-xl border border-border bg-card">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-muted/30">
-                    {["Rule", "Day Offset", "Audience", "Frequency", "Status", "Created", "AI Overrides"].map(h => (
-                      <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rules.map(rule => <RuleRow key={rule.id} rule={rule} />)}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <DefaultAutomationSection
+            automation={defaultAuto}
+            onStatusChange={handleStatusChange}
+          />
 
-          {rules.length > 0 && (
-            <div className="mt-4 rounded-xl border border-border bg-card px-5 py-3.5">
-              <span className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">{rules.length}</span> rules loaded
-                {" · "}
-                <span className="font-semibold text-foreground">{customerFacing}</span> customer-facing
-                {" · "}
-                <span className="font-semibold text-foreground">{internalCount}</span> internal escalations
-              </span>
-            </div>
-          )}
+          <div className="mt-6 flex items-center gap-1.5">
+            <ExternalLink className="h-3 w-3 text-muted-foreground/50" />
+            <button className="text-xs font-medium text-primary hover:underline">
+              Learn how reminder automation works
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
