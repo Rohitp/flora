@@ -9,7 +9,9 @@ import {
   CheckCircle2,
   Mail,
   MessageSquare,
+  ArrowRight,
 } from "lucide-react"
+import Link from "next/link"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -274,6 +276,12 @@ export default function CollectionsPage() {
                   </li>
                 ))}
               </ul>
+              <Button size="sm" className="mt-4 w-full gap-1.5 text-xs" asChild>
+                <Link href="/automations/create/upload">
+                  Try Receivables
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         </div>

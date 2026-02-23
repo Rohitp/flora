@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useCallback, useMemo, useEffect } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Settings2 } from "lucide-react"
+import { Settings2, ArrowRight, Mail } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -142,6 +143,25 @@ export default function CollectionForecastPage() {
           <p className="text-[11px] leading-relaxed text-muted-foreground/70">
             This forecast is computed deterministically from currently active subscriptions and their renewal schedules. It excludes new sales, churn, payment failures, and manual overrides.
           </p>
+
+          {/* Try Receivables CTA */}
+          <div className="flex items-center justify-between rounded-lg border border-primary/15 bg-primary/[0.02] px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                <Mail className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-foreground">Automate invoice follow-ups</p>
+                <p className="text-[11px] text-muted-foreground">Upload your collections policy and activate reminders in minutes.</p>
+              </div>
+            </div>
+            <Button size="sm" className="ml-4 shrink-0 gap-1.5 text-xs" asChild>
+              <Link href="/automations/create/upload">
+                Try Receivables
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </div>
         </div>
       )}
 
