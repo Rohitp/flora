@@ -307,7 +307,8 @@ export function ChargebeeSidebar() {
     if (product === "billing") {
       router.push("/")
     } else {
-      router.push("/receivables")
+      // Receivables is the standalone app running on port 3000
+      window.location.href = "http://localhost:3000"
     }
   }
 
