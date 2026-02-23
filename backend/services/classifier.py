@@ -22,6 +22,9 @@ Valid intents:
 If agent notes are provided, use them as context about this customer's history — prior
 promises, disputes, or patterns — to inform a more accurate classification.
 
+If business rules are provided under "Classification rules", apply them strictly when
+deciding how to classify edge cases.
+
 Return this exact JSON structure:
 {
   "intent": "<one of the four values above>",
@@ -38,19 +41,22 @@ def classify_email(
     invoice_amount: float,
     due_date: date,
     agent_notes: str = "",
+    thread_history: str = "",
+    skill_context: str = "",
 ) -> dict:
     """
     Classify a customer email. Returns a dict with:
     intent, confidence, promised_date (str or None), summary
     """
     notes_section = f"\nAgent notes on this customer:\n{agent_notes}\n" if agent_notes else ""
+    thread_section = f"\nPrior conversation history:\n---\n{thread_history}\n---\n" if thread_history else ""
+    skill_section = f"\nClassification rules (business policy — follow strictly):\n{skill_context}\n" if skill_context else ""
 
     user_message = f"""Customer: {customer_name}
 Invoice: {invoice_number}
 Amount: ${invoice_amount:,.2f}
-Due date: {due_date}{notes_section}
-
-Customer's email:
+Due date: {due_date}{notes_section}{skill_section}{thread_section}
+Customer's latest email:
 ---
 {body}
 ---

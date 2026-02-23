@@ -12,13 +12,13 @@ Write a concise, professional, and empathetic email reply to a customer.
 Tone: firm but courteous. Never threatening. Always leave the door open for resolution.
 Do NOT include a subject line. Do NOT include placeholders like [Name].
 
-If agent notes are provided, use them to personalise the reply — reference prior context where
-relevant (e.g. acknowledging a previous promise, noting a recurring pattern) without being accusatory.
-
-If the customer appears to be asking a question (about their balance, due date, or payment status),
-ALWAYS answer it directly using the invoice details provided. Never give a vague non-answer.
-
-Sign off as 'Collections Team'."""
+You will be given the customer's actual message and any prior conversation history. Read them carefully.
+- If the customer asks a specific question (e.g. currency, balance, due date, payment status), answer it
+  directly and precisely using the invoice details. Never give a vague or evasive answer.
+- If the conversation has prior history, acknowledge it naturally — do not ignore previous context.
+- If agent notes are provided, use them to personalise the reply — reference prior commitments or
+  patterns where relevant, without being accusatory.
+- If business rules or reply style rules are provided, they OVERRIDE all defaults — follow them exactly."""
 
 
 def generate_draft_reply(
@@ -32,6 +32,10 @@ def generate_draft_reply(
     agent_notes: str = "",
     due_date: str = "",
     days_overdue: int | None = None,
+    customer_message: str = "",
+    thread_history: str = "",
+    skill_context: str = "",
+    skill_reply: str = "",
 ) -> str:
     """
     Generate a draft email reply body. Returns plain text string.
@@ -54,6 +58,19 @@ def generate_draft_reply(
 
     overdue_str = f"{days_overdue} days overdue" if days_overdue and days_overdue > 0 else "not yet overdue"
     notes_section = f"\nAgent notes (prior interactions with this customer):\n{agent_notes}\n" if agent_notes else ""
+    thread_section = f"\nPrior conversation history:\n---\n{thread_history}\n---\n" if thread_history else ""
+    message_section = f"\nCustomer's latest message:\n---\n{customer_message}\n---\n" if customer_message else ""
+    skill_section = f"\nBusiness rules for this situation (follow strictly):\n{skill_context}\n" if skill_context else ""
+    reply_style_section = f"\nReply style & tone rules (always apply):\n{skill_reply}\n" if skill_reply else ""
+
+    # Expose relevant account settings so Claude can answer policy/terms questions
+    SETTINGS_TO_EXPOSE = {
+        "company_currency", "payment_terms_days", "late_fee_percent",
+        "accepted_payment_methods", "bank_details", "escalation_threshold_days",
+        "contact_language", "company_name",
+    }
+    exposed = {k: v for k, v in (settings or {}).items() if k in SETTINGS_TO_EXPOSE}
+    account_settings_str = "\n".join(f"  {k}: {v}" for k, v in exposed.items()) if exposed else "  (none configured)"
 
     user_message = f"""Write a reply email to {customer_name}.
 
@@ -63,13 +80,19 @@ Invoice details:
   Due date: {due_date or 'unknown'}
   Status: {overdue_str}
 
+Account settings (use these to answer questions about payment terms, currency, escalation, etc.):
+{account_settings_str}
+{thread_section}{message_section}
 Situation: {intent_context}{notes_section}
 
 Actions our system has automatically taken:
 {actions_summary}
 
-Sign the email as '{sign_off}' from {company_name}.
-Keep the reply to 3-5 sentences. Be specific, professional, and human."""
+Default sign-off: '{sign_off}' from {company_name}.
+Keep the reply to 3-5 sentences. Be specific, professional, and human.
+If the customer asked a direct question, answer it first before anything else.
+If you don't have enough information to answer a specific question, say so honestly rather than deflecting.
+{skill_section}{reply_style_section}"""
 
     try:
         response = client.messages.create(

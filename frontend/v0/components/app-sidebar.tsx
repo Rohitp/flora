@@ -11,13 +11,15 @@ import {
   ClipboardList,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ForaBeeIcon } from "@/components/icons/fora-bee-icon"
 
 const navItems = [
-  { label: "Home", href: "/", icon: Home },
-  { label: "Inbox", href: "/inbox", icon: Inbox },
-  { label: "Invoices", href: "/timeline", icon: FileText },
+  { label: "Home",        href: "/",           icon: Home },
+  { label: "Inbox",       href: "/inbox",       icon: Inbox },
+  { label: "Invoices",    href: "/timeline",    icon: FileText },
   { label: "Automations", href: "/automations", icon: Zap },
-  { label: "Settings", href: "/settings", icon: Settings },
+  { label: "Fora Skills", href: "/skills",      icon: ForaBeeIcon },
+  { label: "Settings",    href: "/settings",    icon: Settings },
 ]
 
 export function AppSidebar() {

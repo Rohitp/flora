@@ -102,6 +102,9 @@ GLOBAL_SETTINGS = [
     ("business_hours_only", "true"),
     ("reply_sign_off", "Collections Team"),
     ("company_name", "Receivables Co"),
+    ("company_currency", "USD"),
+    ("payment_terms_days", "30"),
+    ("accepted_payment_methods", "Bank transfer (ACH/Wire), cheque"),
 ]
 
 # Per-customer settings — demonstrate variety for the agent to work with

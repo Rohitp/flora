@@ -105,11 +105,37 @@ def process_email(
             .first()
         )
 
-    # 3. Read existing agent notes (used as context for classification + reply)
+    # 3. Read settings (agent notes + skill contexts + everything else)
     settings = _get_customer_settings(db, customer.id if customer else None)
     agent_notes = settings.get("agent_notes", "")
 
-    # 4. Classify intent (with agent notes context)
+    # Skill contexts — user-defined business rules injected into each pipeline step
+    skill_classification = settings.get("skill_context_classification", "")
+    skill_promise_to_pay  = settings.get("skill_context_promise_to_pay", "")
+    skill_dispute         = settings.get("skill_context_dispute", "")
+    skill_reply           = settings.get("skill_context_reply", "")
+
+    # Build thread history from prior messages (before we append the new one)
+    thread_history = ""
+    if existing_thread:
+        parts = []
+        if existing_thread.body:
+            parts.append(f"[Customer]\n{existing_thread.body}")
+        if existing_thread.draft_reply:
+            parts.append(f"[Fora's last reply]\n{existing_thread.draft_reply}")
+        thread_history = "\n\n".join(parts)
+
+    # 4. Classify intent (with agent notes + thread history + all skill contexts)
+    all_skill_contexts_for_classifier = "\n\n".join(
+        f"[{label}]\n{ctx}"
+        for label, ctx in [
+            ("Classification rules", skill_classification),
+            ("Promise to Pay rules", skill_promise_to_pay),
+            ("Dispute rules",        skill_dispute),
+            ("Reply style rules",    skill_reply),
+        ]
+        if ctx
+    )
     classification = {"intent": "unclear", "confidence": 0.0, "promised_date": None, "summary": ""}
     if customer and invoice:
         classification = classify_email(
@@ -119,6 +145,8 @@ def process_email(
             invoice_amount=invoice.amount,
             due_date=invoice.due_date,
             agent_notes=agent_notes,
+            thread_history=thread_history,
+            skill_context=all_skill_contexts_for_classifier,
         )
 
     intent = classification["intent"]
@@ -144,10 +172,20 @@ def process_email(
         else:
             actions_taken = scheduler.apply_unclear(db, invoice, inbox_id=0)
 
-    # 6. Generate draft reply (with agent notes context)
+    # 6. Generate draft reply (agent notes + thread + customer message + all skill contexts)
     draft_reply = ""
     if customer and invoice:
         days_overdue = (date.today() - invoice.due_date).days if invoice.due_date < date.today() else None
+        # Combine all skill contexts — every rule is visible to every reply
+        all_skill_contexts = "\n\n".join(
+            f"[{label}]\n{ctx}"
+            for label, ctx in [
+                ("Classification rules", skill_classification),
+                ("Promise to Pay rules", skill_promise_to_pay),
+                ("Dispute rules",        skill_dispute),
+            ]
+            if ctx
+        )
         draft_reply = generate_draft_reply(
             intent=intent,
             customer_name=customer.name,
@@ -159,6 +197,10 @@ def process_email(
             agent_notes=agent_notes,
             due_date=str(invoice.due_date),
             days_overdue=days_overdue,
+            customer_message=body,
+            thread_history=thread_history,
+            skill_context=all_skill_contexts,
+            skill_reply=skill_reply,
         )
 
     # 7. Persist inbox message (create or append to thread)

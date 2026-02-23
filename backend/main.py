@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from database import engine, SessionLocal, Base, get_db
 import models  # ensure all models are registered before create_all
 from seed import seed
-from routes import customers, invoices, rules, inbox, dashboard, admin
+from routes import customers, invoices, rules, inbox, dashboard, admin, skills
 from services.gmail_poller import start_poller
 
 
@@ -72,6 +72,7 @@ app.include_router(rules.router)
 app.include_router(inbox.router)
 app.include_router(dashboard.router)
 app.include_router(admin.router)
+app.include_router(skills.router)
 
 
 @app.get("/health")
