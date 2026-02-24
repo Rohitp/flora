@@ -43,7 +43,7 @@ function ForaAvatar({ size = "sm" }: { size?: "sm" | "md" }) {
   return (
     <div className={cn("shrink-0 overflow-hidden rounded-full", size === "md" ? "h-10 w-10" : "h-8 w-8")}>
       <Image
-        src="/images/fora-hero.jpg"
+        src="/images/fora.png"
         alt="Fora"
         width={dim}
         height={dim}

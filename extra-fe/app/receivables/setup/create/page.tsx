@@ -31,6 +31,17 @@ type ConversationPhase =
   | "navigating"
 
 /* ------------------------------------------------------------------ */
+/*  User memory: accumulates choices for personalization callbacks     */
+/* ------------------------------------------------------------------ */
+interface UserMemory {
+  currentProcess: string
+  addPreDue: boolean | null
+  followUpCount: string | null
+  toneStyle: string | null
+  segment: string | null
+}
+
+/* ------------------------------------------------------------------ */
 /*  Fora Avatar                                                        */
 /* ------------------------------------------------------------------ */
 function ForaAvatar() {
@@ -99,9 +110,9 @@ function TypingIndicator() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Option Buttons                                                     */
+/*  Quick-Reply Buttons (optional, alongside free-text)                */
 /* ------------------------------------------------------------------ */
-function OptionButtons({
+function QuickReplies({
   options,
   onSelect,
 }: {
@@ -114,7 +125,7 @@ function OptionButtons({
         <button
           key={option}
           onClick={() => onSelect(option)}
-          className="rounded-lg border border-[#e2e8f0] bg-white px-4 py-2.5 text-sm font-medium text-[#334155] shadow-sm transition-all hover:border-[#3b82f6] hover:bg-[#f8fafc] hover:text-[#3b82f6] active:scale-[0.98]"
+          className="rounded-lg border border-[#e2e8f0] bg-white px-4 py-2 text-[13px] font-medium text-[#334155] shadow-sm transition-all hover:border-[#3b82f6] hover:bg-[#f8fafc] hover:text-[#3b82f6] active:scale-[0.98]"
         >
           {option}
         </button>
@@ -136,6 +147,13 @@ export default function CreatePolicyPage() {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const msgCounter = useRef(0)
+  const memoryRef = useRef<UserMemory>({
+    currentProcess: "",
+    addPreDue: null,
+    followUpCount: null,
+    toneStyle: null,
+    segment: null,
+  })
 
   const nextId = useCallback((prefix: string) => {
     msgCounter.current++
@@ -149,8 +167,14 @@ export default function CreatePolicyPage() {
 
   /* Focus input when ready for text */
   useEffect(() => {
-    if (phase === "awaiting-first-input") {
-      inputRef.current?.focus()
+    if (
+      phase === "awaiting-first-input" ||
+      phase === "pre-due-question" ||
+      phase === "follow-up-question" ||
+      phase === "tone-question" ||
+      phase === "segment-question"
+    ) {
+      setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [phase])
 
@@ -162,7 +186,8 @@ export default function CreatePolicyPage() {
         {
           id,
           sender: "fora",
-          content: "Tell me how you currently handle unpaid invoices.",
+          content:
+            "Tell me how you currently remind customers about unpaid invoices.\n\nFor example: do you send emails after the due date, call them, or have a collections team handle it?",
         },
       ])
       setNewMessageId(id)
@@ -174,7 +199,7 @@ export default function CreatePolicyPage() {
 
   /* Helper: add Fora message after typing animation */
   const foraReply = useCallback(
-    (content: React.ReactNode, nextPhase: ConversationPhase, delay = 1800) => {
+    (content: React.ReactNode, nextPhase: ConversationPhase, delay = 2000) => {
       setShowTyping(true)
       setTimeout(() => {
         setShowTyping(false)
@@ -188,100 +213,189 @@ export default function CreatePolicyPage() {
     [nextId]
   )
 
+  /* Add a user message bubble */
+  const addUserMessage = useCallback(
+    (text: string) => {
+      const id = nextId("user")
+      setMessages((prev) => [...prev, { id, sender: "user", content: text }])
+      setNewMessageId(id)
+    },
+    [nextId]
+  )
+
   /* Handle free-text submit */
   function handleSendMessage() {
     const text = inputValue.trim()
-    if (!text || phase !== "awaiting-first-input") return
+    if (!text) return
 
     setInputValue("")
-    const id = nextId("user")
-    setMessages((prev) => [...prev, { id, sender: "user", content: text }])
-    setNewMessageId(id)
-    setPhase("interpreting")
+    addUserMessage(text)
+
+    // Route based on current phase
+    if (phase === "awaiting-first-input") {
+      memoryRef.current.currentProcess = text
+      setPhase("interpreting")
+      foraReply(
+        `Got it. It sounds like your current approach is mostly reactive \u2014 reminders go out after invoices are already overdue.\n\nThat\u2019s common in B2B, but it often means cash comes in slower than it needs to.\n\nWould you like to add a gentle reminder before the due date? Sending a nudge 3 days early can reduce overdue invoices by up to 40%.`,
+        "pre-due-question",
+        2400
+      )
+    } else {
+      // For other phases, treat free text as a selection
+      handleFreeTextForPhase(text)
+    }
+  }
+
+  /* Map free text to phase actions */
+  function handleFreeTextForPhase(text: string) {
+    const lower = text.toLowerCase()
+
+    switch (phase) {
+      case "pre-due-question": {
+        const wantsPreDue =
+          lower.includes("yes") ||
+          lower.includes("add") ||
+          lower.includes("before") ||
+          lower.includes("pre")
+        handlePreDueChoice(wantsPreDue)
+        break
+      }
+      case "follow-up-question": {
+        const match = text.match(/\d/)
+        const count = match ? match[0] : "2"
+        handleFollowUpChoice(count)
+        break
+      }
+      case "tone-question": {
+        const wantsEscalation =
+          lower.includes("yes") ||
+          lower.includes("escalat") ||
+          lower.includes("gradual")
+        handleToneChoice(wantsEscalation)
+        break
+      }
+      case "segment-question": {
+        handleSegmentChoice(text)
+        break
+      }
+    }
+  }
+
+  /* ---- Phase handlers with memory & reasoning ---- */
+
+  function handlePreDueChoice(addPreDue: boolean) {
+    memoryRef.current.addPreDue = addPreDue
+    setPhase("post-pre-due")
+
+    if (addPreDue) {
+      foraReply(
+        `Smart choice. A pre-due reminder works because it catches invoices before they slip into overdue status \u2014 customers pay while it\u2019s still top of mind.\n\nNow, how many follow-up reminders would you like after the due date? Most B2B teams find 2\u20133 is the sweet spot.`,
+        "follow-up-question",
+        2200
+      )
+    } else {
+      foraReply(
+        `Understood \u2014 we\u2019ll keep reminders post-due only. That can work well if your customers are generally reliable payers.\n\nHow many follow-up reminders should go out after the due date?`,
+        "follow-up-question",
+        2200
+      )
+    }
+  }
+
+  function handleFollowUpChoice(count: string) {
+    memoryRef.current.followUpCount = count
+    setPhase("post-follow-up")
+
+    const preRef = memoryRef.current.addPreDue
+      ? "Combined with your pre-due reminder, this"
+      : "This"
 
     foraReply(
-      "Got it. So reminders only go out after invoices become overdue.\nThat's common in B2B \u2014 but it often delays payments.\n\nWould you like to add a reminder before the due date to reduce overdue invoices?",
-      "pre-due-question",
+      `${count} follow-ups \u2014 that\u2019s a good balance between persistence and patience.\n\n${preRef} creates enough touchpoints without overwhelming your customers.\n\nShould the tone escalate gradually with each reminder? Starting friendly and shifting to more direct language after 7 days typically improves recovery rates by 15\u201320%.`,
+      "tone-question",
       2200
     )
   }
 
-  /* Handle button selections */
-  function handleSelect(option: string, currentPhase: ConversationPhase) {
-    // Add user choice as a message
-    const id = nextId("user")
-    setMessages((prev) => [...prev, { id, sender: "user", content: option }])
-    setNewMessageId(id)
+  function handleToneChoice(escalate: boolean) {
+    memoryRef.current.toneStyle = escalate ? "escalating" : "consistent"
+    setPhase("post-tone")
 
-    switch (currentPhase) {
+    if (escalate) {
+      foraReply(
+        `Great call. Escalating tone signals urgency without burning bridges \u2014 the first reminder stays warm, and later ones get progressively more direct.\n\nLast question: who should these reminders apply to?`,
+        "segment-question",
+        2200
+      )
+    } else {
+      foraReply(
+        `Got it \u2014 a consistent, professional tone throughout. That works particularly well for maintaining long-term customer relationships.\n\nLast question: who should these reminders apply to?`,
+        "segment-question",
+        2200
+      )
+    }
+  }
+
+  function handleSegmentChoice(segment: string) {
+    memoryRef.current.segment = segment
+    setPhase("post-segment")
+
+    const mem = memoryRef.current
+    const toneNote =
+      mem.toneStyle === "escalating"
+        ? "with gradually escalating tone"
+        : "with a consistent professional tone"
+
+    const segmentLabel = segment.toLowerCase().includes("enterprise")
+      ? "Enterprise customers"
+      : segment.toLowerCase().includes("smb")
+        ? "SMB customers"
+        : "all customers"
+
+    const formalNote = segment.toLowerCase().includes("enterprise")
+      ? " Since this targets Enterprise customers, I\u2019ll keep the language more formal."
+      : ""
+
+    foraReply(
+      `Perfect. Here\u2019s what I\u2019m building for you:\n\n\u2022 ${mem.addPreDue ? "Pre-due reminder + " : ""}${mem.followUpCount} post-due follow-ups\n\u2022 Applied to ${segmentLabel} ${toneNote}${formalNote}\n\nLet me put this strategy together\u2026`,
+      "wrapping-up",
+      2400
+    )
+
+    // Navigate after the wrap-up message
+    setTimeout(() => {
+      setPhase("navigating")
+    }, 4800)
+    setTimeout(() => {
+      router.push("/receivables/setup/summary")
+    }, 6000)
+  }
+
+  /* Handle quick-reply button click */
+  function handleQuickReply(option: string) {
+    addUserMessage(option)
+
+    switch (phase) {
       case "pre-due-question":
-        setPhase("post-pre-due")
-        if (option.startsWith("Add a reminder")) {
-          foraReply(
-            "Smart move. A gentle nudge before the due date can significantly reduce overdue rates.\n\nHow many follow-up reminders would you like after the due date?",
-            "follow-up-question",
-            1800
-          )
-        } else {
-          foraReply(
-            "Understood. We\u2019ll keep reminders post-due only.\n\nHow many follow-up reminders would you like after the due date?",
-            "follow-up-question",
-            1800
-          )
-        }
+        handlePreDueChoice(option.toLowerCase().includes("add") || option.toLowerCase().includes("yes"))
         break
-
       case "follow-up-question":
-        setPhase("post-follow-up")
-        foraReply(
-          `${option} follow-ups \u2014 noted.\n\nShould the tone escalate gradually? Starting friendly and getting more direct with each reminder can improve response rates.`,
-          "tone-question",
-          1800
-        )
+        handleFollowUpChoice(option)
         break
-
       case "tone-question":
-        setPhase("post-tone")
-        if (option.startsWith("Yes")) {
-          foraReply(
-            "Great, we\u2019ll start warm and gradually shift to a more direct tone.\n\nOne last thing \u2014 should these reminders apply to all customers, or just a specific segment?",
-            "segment-question",
-            1800
-          )
-        } else {
-          foraReply(
-            "Got it \u2014 consistent, professional tone throughout.\n\nOne last thing \u2014 should these reminders apply to all customers, or just a specific segment?",
-            "segment-question",
-            1800
-          )
-        }
+        handleToneChoice(option.toLowerCase().includes("yes") || option.toLowerCase().includes("escalat"))
         break
-
       case "segment-question":
-        setPhase("post-segment")
-        foraReply(
-          "Perfect. I have everything I need to set up your reminder policy.\n\nLet me put this together for you\u2026",
-          "wrapping-up",
-          1800
-        )
-
-        // Navigate after the wrap-up message appears
-        setTimeout(() => {
-          setPhase("navigating")
-        }, 3600)
-        setTimeout(() => {
-          router.push("/receivables/setup/summary")
-        }, 4800)
+        handleSegmentChoice(option)
         break
     }
   }
 
-  /* Determine what action area to show */
-  const showInput = phase === "awaiting-first-input"
-  const showButtons = (p: ConversationPhase) => {
-    switch (p) {
+  /* Quick-reply options per phase */
+  function getQuickReplies(): string[] | null {
+    switch (phase) {
       case "pre-due-question":
-        return ["Add a reminder 3 days before due", "Keep it post-due only"]
+        return ["Add a pre-due reminder", "Keep it post-due only"]
       case "follow-up-question":
         return ["1", "2", "3"]
       case "tone-question":
@@ -293,7 +407,22 @@ export default function CreatePolicyPage() {
     }
   }
 
-  const buttonOptions = showButtons(phase)
+  const quickReplies = getQuickReplies()
+  const isInputPhase =
+    phase === "awaiting-first-input" ||
+    phase === "pre-due-question" ||
+    phase === "follow-up-question" ||
+    phase === "tone-question" ||
+    phase === "segment-question"
+
+  const placeholders: Partial<Record<ConversationPhase, string>> = {
+    "awaiting-first-input":
+      'e.g. "We email customers a week after the invoice is overdue"',
+    "pre-due-question": 'Type your answer or pick an option above...',
+    "follow-up-question": 'Type a number or pick an option above...',
+    "tone-question": 'Type your preference or pick an option above...',
+    "segment-question": 'Type a segment or pick an option above...',
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
@@ -305,7 +434,9 @@ export default function CreatePolicyPage() {
             <h1 className="text-sm font-semibold text-[#0f172a]">
               Create Reminder Policy
             </h1>
-            <p className="text-xs text-[#94a3b8]">Guided setup with Fora</p>
+            <p className="text-xs text-[#94a3b8]">
+              Conversational setup with Fora
+            </p>
           </div>
         </div>
       </header>
@@ -323,10 +454,10 @@ export default function CreatePolicyPage() {
 
           {showTyping && <TypingIndicator />}
 
-          {buttonOptions && !showTyping && (
-            <OptionButtons
-              options={buttonOptions}
-              onSelect={(opt) => handleSelect(opt, phase)}
+          {quickReplies && !showTyping && (
+            <QuickReplies
+              options={quickReplies}
+              onSelect={handleQuickReply}
             />
           )}
 
@@ -334,10 +465,10 @@ export default function CreatePolicyPage() {
         </div>
       </div>
 
-      {/* Bottom action area */}
+      {/* Bottom input area -- always visible */}
       <div className="border-t border-[#e2e8f0] bg-[#fafbfc]">
         <div className="mx-auto w-full max-w-2xl px-6 py-4">
-          {showInput ? (
+          {isInputPhase ? (
             <form
               onSubmit={(e) => {
                 e.preventDefault()
@@ -350,7 +481,9 @@ export default function CreatePolicyPage() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder={'e.g. "We send reminders after invoices are 7 days overdue"'}
+                placeholder={
+                  placeholders[phase] || "Type a message..."
+                }
                 className="flex-1 rounded-lg border border-[#e2e8f0] bg-white px-4 py-2.5 text-sm text-[#1e293b] placeholder:text-[#94a3b8]/60 outline-none transition-colors focus:border-[#3b82f6] focus:ring-1 focus:ring-[#3b82f6]/20"
               />
               <button
@@ -369,15 +502,13 @@ export default function CreatePolicyPage() {
           ) : phase === "navigating" ? (
             <div className="flex items-center justify-center gap-2.5 text-sm text-[#64748b]">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Setting up your configuration...</span>
+              <span>Preparing your strategy...</span>
             </div>
           ) : (
             <p className="text-center text-xs text-[#94a3b8]">
-              {buttonOptions
-                ? "Choose an option above to continue"
-                : phase === "wrapping-up"
-                  ? "Preparing your policy..."
-                  : "\u00A0"}
+              {phase === "wrapping-up"
+                ? "Putting your strategy together..."
+                : "\u00A0"}
             </p>
           )}
         </div>

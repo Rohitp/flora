@@ -9,7 +9,7 @@ export default function CreateAutomationChoicePage() {
         {/* Hero image */}
         <div className="mb-8">
           <Image
-            src="/images/fora-hero.jpg"
+            src="/images/fora.png"
             alt="Fora, your AI collections assistant"
             width={240}
             height={240}

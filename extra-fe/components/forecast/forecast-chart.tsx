@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-type GroupBy = "frequency" | "plan" | "family"
+type GroupBy = "frequency" | "plan" | "family" | "auto-collection"
 
 const FREQUENCY_COLORS: Record<string, string> = {
   Monthly: "#3b82f6",
@@ -37,6 +37,11 @@ const FAMILY_COLORS: Record<string, string> = {
   "Core Platform": "#3b82f6",
   Analytics: "#f59e0b",
   "Add-ons": "#10b981",
+}
+
+const AUTO_COLLECTION_COLORS: Record<string, string> = {
+  ON: "#10b981",
+  OFF: "#f59e0b",
 }
 
 function ChartTooltipContent({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; name: string; color: string }>; label?: string }) {
@@ -124,6 +129,17 @@ export function ForecastChart({
       return { chartData: cd, stackKeys: keys, colorMap: colors }
     }
 
+    if (groupBy === "auto-collection") {
+      const keys = ["ON", "OFF"]
+      const cd = data.map((m) => ({
+        month: m.month,
+        ON: m.byAutoCollection["ON"] || 0,
+        OFF: m.byAutoCollection["OFF"] || 0,
+        MRR: mrr,
+      }))
+      return { chartData: cd, stackKeys: keys, colorMap: AUTO_COLLECTION_COLORS }
+    }
+
     // family
     const families = ["Core Platform", "Analytics", "Add-ons"]
     const cd = data.map((m) => {
@@ -140,7 +156,7 @@ export function ForecastChart({
       {/* Header row */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-card-foreground">
-          {horizon}-Month Expected Cash Collection Trend
+          {horizon}-Month Expected Collection Trend
         </h3>
         <div className="flex items-center gap-3">
           {/* Group By selector */}
@@ -154,6 +170,7 @@ export function ForecastChart({
                 <SelectItem value="frequency">Billing Frequency</SelectItem>
                 <SelectItem value="plan">Plan</SelectItem>
                 <SelectItem value="family">Product Family</SelectItem>
+                <SelectItem value="auto-collection">Auto-collection</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo, useEffect } from "react"
+import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Settings2, ArrowRight, AlertCircle } from "lucide-react"
@@ -72,6 +72,43 @@ export default function CollectionForecastPage() {
   const [showHowItWorks, setShowHowItWorks] = useState(false)
   const [showTransition, setShowTransition] = useState(false)
 
+  // Sticky footer: shows only after scrolling starts, hides once permanent nudge is seen
+  const nudgeRef = useRef<HTMLDivElement>(null)
+  const topSentinelRef = useRef<HTMLDivElement>(null)
+  const [nudgeVisible, setNudgeVisible] = useState(false)
+  const [nudgeSeenOnce, setNudgeSeenOnce] = useState(false)
+  const [hasScrolled, setHasScrolled] = useState(false)
+
+  useEffect(() => {
+    const el = nudgeRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setNudgeVisible(entry.isIntersecting)
+        if (entry.isIntersecting) setNudgeSeenOnce(true)
+      },
+      { threshold: 0.3 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [forecast])
+
+  useEffect(() => {
+    const el = topSentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // When the top sentinel scrolls out of view, user has scrolled down
+        if (!entry.isIntersecting) setHasScrolled(true)
+      },
+      { threshold: 0 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [forecast])
+
+  const showStickyFooter = forecast && hasScrolled && !nudgeVisible && !nudgeSeenOnce
+
   const handleRecompute = useCallback(() => {
     setIsComputing(true)
     setSelectedMonth(null)
@@ -84,6 +121,9 @@ export default function CollectionForecastPage() {
 
   return (
     <div className="p-6">
+      {/* Scroll detection sentinel */}
+      <div ref={topSentinelRef} className="h-0 w-0" aria-hidden />
+
       {/* Page header */}
       <div className="mb-5 flex items-start justify-between">
         <div>
@@ -91,7 +131,7 @@ export default function CollectionForecastPage() {
             Collection Forecast
           </h1>
           <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-            Deterministic monthly cash collection forecast from currently active subscriptions.
+            {"Your expected collections, month by month \u2014 based on active subscriptions today."}
           </p>
         </div>
         <TooltipProvider delayDuration={200}>
@@ -147,7 +187,7 @@ export default function CollectionForecastPage() {
           />
 
           {/* Contextual Receivables nudge */}
-          <div className="rounded-xl border border-primary/10 bg-[hsl(225,30%,97%)] px-6 py-5 shadow-sm">
+          <div ref={nudgeRef} className="rounded-xl border border-primary/10 bg-[hsl(225,30%,97%)] px-6 py-5 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               {/* LEFT: Content */}
               <div className="max-w-xl">
@@ -271,6 +311,36 @@ export default function CollectionForecastPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Sticky footer nudge */}
+      <div
+        className={`fixed bottom-0 right-0 left-[220px] z-50 transition-all duration-500 ${
+          showStickyFooter
+            ? "translate-y-0 opacity-100"
+            : "translate-y-full opacity-0 pointer-events-none"
+        }`}
+      >
+        <div className="border-t border-primary/10 bg-[hsl(225,30%,97%)]/95 px-6 py-3 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                {"Cash forecast \u2260 Cash collected"}
+              </p>
+              <p className="mt-0.5 text-sm font-medium text-foreground">
+                Make sure this forecast turns into real cash.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              className="shrink-0 gap-1.5 text-xs shadow-sm"
+              onClick={() => setShowTransition(true)}
+            >
+              Try Receivables
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      </div>
 
       <ReceivablesTransition active={showTransition} onDone={() => setShowTransition(false)} />
     </div>

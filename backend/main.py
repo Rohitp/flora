@@ -21,7 +21,7 @@ from database import engine, SessionLocal, Base, get_db
 import models  # ensure all models are registered before create_all
 from seed import seed
 from routes import customers, invoices, rules, inbox, dashboard, admin, skills
-from services.gmail_poller import start_poller
+from services.gmail_poller import start_poller, get_poller_status
 
 
 @asynccontextmanager
@@ -36,8 +36,9 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-    # Start Gmail poller (no-ops gracefully if creds not set)
-    start_poller()
+    # Start Gmail poller (skip if NO_POLLER=1, e.g. when run_poller.py is used separately)
+    if not os.environ.get("NO_POLLER"):
+        start_poller()
 
     yield
     # Shutdown: daemon thread will die with the process
@@ -79,4 +80,9 @@ app.include_router(skills.router)
 def health(db: Session = Depends(get_db)):
     from models import Customer
     count = db.query(Customer).count()
-    return {"status": "ok", "db_seeded": count > 0, "customer_count": count}
+    return {
+        "status": "ok",
+        "db_seeded": count > 0,
+        "customer_count": count,
+        "poller": get_poller_status(),
+    }

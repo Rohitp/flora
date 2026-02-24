@@ -89,7 +89,7 @@ export default function CollectionForecastPage() {
             Collection Forecast
           </h1>
           <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-            Deterministic monthly cash collection forecast from currently active subscriptions.
+            {"Your expected collections, month by month \u2014 based on active subscriptions today."}
           </p>
         </div>
         <TooltipProvider delayDuration={200}>
