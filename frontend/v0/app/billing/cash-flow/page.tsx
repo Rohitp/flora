@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useCallback, useMemo, useEffect } from "react"
-import Link from "next/link"
+import { useState, useCallback, useMemo, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Settings2, ArrowRight, Mail } from "lucide-react"
+import { Settings2, ArrowRight, AlertCircle, X } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -24,7 +24,8 @@ import { ForecastSettings } from "@/components/forecast/forecast-settings"
 import { ExportModal } from "@/components/forecast/export-modal"
 
 export default function CollectionForecastPage() {
-  const [horizon] = useState<12 | 24>(12)
+  const router = useRouter()
+  const [horizon, setHorizon] = useState<12 | 24>(12)
   const [basis, setBasis] = useState<"invoice" | "collection">("collection")
   const [isComputing, setIsComputing] = useState(false)
   const [showExport, setShowExport] = useState(false)
@@ -60,6 +61,24 @@ export default function CollectionForecastPage() {
     return spike ?? null
   }, [forecast])
 
+  // Sticky footer: visible by default, permanently hides once the nudge card enters view
+  const nudgeRef = useRef<HTMLDivElement>(null)
+  const [nudgeHasBeenSeen, setNudgeHasBeenSeen] = useState(false)
+  const [stickyDismissed, setStickyDismissed] = useState(false)
+
+  useEffect(() => {
+    const el = nudgeRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setNudgeHasBeenSeen(true) },
+      { threshold: 0.1 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [forecast])
+
+  const showStickyFooter = forecast && !nudgeHasBeenSeen && !stickyDismissed
+
   const handleRecompute = useCallback(() => {
     setIsComputing(true)
     setSelectedMonth(null)
@@ -70,8 +89,18 @@ export default function CollectionForecastPage() {
     setSettings((prev) => ({ ...prev, [key]: value }))
   }, [])
 
+  const handleTryReceivables = useCallback(() => {
+    router.push("/automations/create")
+  }, [router])
+
+  const handleDismissSticky = useCallback(() => {
+    setStickyDismissed(true)
+    router.push("/automations")
+  }, [router])
+
   return (
     <div className="p-6">
+
       {/* Page header */}
       <div className="mb-5 flex items-start justify-between">
         <div>
@@ -79,7 +108,7 @@ export default function CollectionForecastPage() {
             Collection Forecast
           </h1>
           <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-            Deterministic monthly cash collection forecast from currently active subscriptions.
+            {"Your expected collections, month by month \u2014 based on active subscriptions today."}
           </p>
         </div>
         <TooltipProvider delayDuration={200}>
@@ -134,34 +163,49 @@ export default function CollectionForecastPage() {
             onExport={() => setShowExport(true)}
           />
 
-          {spikeMonth && (
-            <p className="text-[11px] leading-relaxed text-muted-foreground/70">
-              Note: An upcoming billing spike in {spikeMonth.month} may increase collection risk. Consider proactive outreach for at-risk accounts.
-            </p>
-          )}
+          {/* Receivables nudge card */}
+          <div ref={nudgeRef} className="rounded-xl border border-primary/10 bg-[hsl(225,30%,97%)] px-6 py-5 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-xl">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  {"Cash forecast \u2260 Cash collected"}
+                </p>
+                <h3 className="mt-1.5 text-base font-semibold leading-snug text-foreground">
+                  Make sure this forecast turns into real cash.
+                </h3>
+                <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5">
+                  {[
+                    "Reduce overdue invoices",
+                    "Automate follow-ups",
+                    "Improve cash recovery rates",
+                    "Get visibility into at-risk revenue",
+                  ].map((item) => (
+                    <li key={item} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="inline-block h-1 w-1 shrink-0 rounded-full bg-primary/60" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="flex shrink-0 flex-col items-end gap-2 lg:pt-6">
+                <Button size="sm" className="gap-1.5 text-xs shadow-sm" onClick={handleTryReceivables}>
+                  Explore Receivables
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+                {spikeMonth && (
+                  <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+                    <AlertCircle className="h-3 w-3 text-primary/50" />
+                    Upcoming spike in {spikeMonth.month} increases collection risk.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
 
           <p className="text-[11px] leading-relaxed text-muted-foreground/70">
             This forecast is computed deterministically from currently active subscriptions and their renewal schedules. It excludes new sales, churn, payment failures, and manual overrides.
           </p>
-
-          {/* Try Receivables CTA */}
-          <div className="flex items-center justify-between rounded-lg border border-primary/15 bg-primary/[0.02] px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                <Mail className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-foreground">Automate invoice follow-ups</p>
-                <p className="text-[11px] text-muted-foreground">Upload your collections policy and activate reminders in minutes.</p>
-              </div>
-            </div>
-            <Button size="sm" className="ml-4 shrink-0 gap-1.5 text-xs" asChild>
-              <Link href="/automations/create/upload">
-                Try Receivables
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </div>
         </div>
       )}
 
@@ -195,6 +239,45 @@ export default function CollectionForecastPage() {
 
       {/* Export modal */}
       <ExportModal open={showExport} onClose={() => setShowExport(false)} />
+
+      {/* Sticky footer nudge — appears when scrolled past the nudge card */}
+      <div
+        className={`fixed bottom-0 right-0 left-[220px] z-50 transition-all duration-500 ${
+          showStickyFooter
+            ? "translate-y-0 opacity-100"
+            : "translate-y-full opacity-0 pointer-events-none"
+        }`}
+      >
+        <div className="border-t border-primary/10 bg-[hsl(225,30%,97%)]/95 px-6 py-3 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                {"Cash forecast \u2260 Cash collected"}
+              </p>
+              <p className="mt-0.5 text-sm font-medium text-foreground">
+                Make sure this forecast turns into real cash.
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                size="sm"
+                className="gap-1.5 text-xs shadow-sm"
+                onClick={handleTryReceivables}
+              >
+                Try Receivables
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+              <button
+                onClick={handleDismissSticky}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

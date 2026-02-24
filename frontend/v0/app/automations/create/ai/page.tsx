@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { Send, Loader2 } from "lucide-react"
+import { Send, Loader2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface ChatMessage {
@@ -232,7 +232,7 @@ export default function CreateWithAIPage() {
 
   return (
     <div className="flex h-full flex-col bg-white">
-      <header className="flex items-center border-b border-[#e2e8f0] px-6 py-4">
+      <header className="flex items-center justify-between border-b border-[#e2e8f0] px-6 py-4">
         <div className="flex items-center gap-3">
           <ForaAvatar />
           <div>
@@ -240,6 +240,13 @@ export default function CreateWithAIPage() {
             <p className="text-xs text-[#94a3b8]">Guided setup with Fora</p>
           </div>
         </div>
+        <button
+          onClick={() => router.push("/automations")}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-[#94a3b8] transition-colors hover:bg-[#f1f5f9] hover:text-[#334155]"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </header>
 
       <div className="flex-1 overflow-y-auto">
