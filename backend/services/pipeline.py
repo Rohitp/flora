@@ -25,9 +25,8 @@ def _normalize_subject(subject: str) -> str:
     return re.sub(r'^(re|fwd|fw):\s*', '', subject.strip(), flags=re.IGNORECASE).strip()
 
 
-def _next_ticket_id(db: Session) -> str:
-    count = db.query(InboxMessage).count()
-    return f"TKT-{count + 1:04d}"
+def _next_ticket_id(msg_id: int) -> str:
+    return f"TKT-{msg_id:04d}"
 
 
 def _get_customer_settings(db: Session, customer_id: int | None) -> dict:
@@ -220,9 +219,8 @@ def process_email(
         db.commit()
         msg = existing_thread
     else:
-        ticket_id = _next_ticket_id(db)
         msg = InboxMessage(
-            ticket_id=ticket_id,
+            ticket_id="TKT-PENDING",  # replaced after flush
             customer_id=customer.id if customer else None,
             invoice_id=invoice.id if invoice else None,
             from_email=from_email,
@@ -239,6 +237,8 @@ def process_email(
             status="classified" if intent != "unclear" else "needs_review",
         )
         db.add(msg)
+        db.flush()  # get auto-increment id
+        msg.ticket_id = _next_ticket_id(msg.id)
         db.commit()
         db.refresh(msg)
 

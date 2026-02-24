@@ -93,6 +93,15 @@ CUSTOMERS = [
         "amount": 9200.00,
         "due_offset": +5,  # due in 5 days — current
     },
+    {
+        "name": "Mahesh Chole Bature Company",
+        "email": "mahesh.bsb@gmail.com",
+        "initials": "MC",
+        "color": "bg-yellow-600",
+        "invoice_number": "IN-1070",
+        "amount": 11400.00,
+        "due_offset": -9,  # 9 days overdue
+    },
 ]
 
 GLOBAL_SETTINGS = [
@@ -139,6 +148,10 @@ CUSTOMER_SETTINGS = {
     "Mahesh Pav Bhaji Company": [
         ("agent_notes", "Maheshwar is the owner and finance contact. Small business — be empathetic. Prefers short, direct emails."),
         ("preferred_contact_time", "afternoon"),
+    ],
+    "Mahesh Chole Bature Company": [
+        ("agent_notes", "Mahesh (mahesh.bsb@gmail.com) is the sole contact. New customer — first overdue invoice. Friendly but firm tone appropriate."),
+        ("preferred_contact_time", "morning"),
     ],
 }
 

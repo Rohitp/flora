@@ -187,6 +187,7 @@ function EmailView({
 }) {
   const [draftText, setDraftText] = useState(message.draft_reply ?? "")
   const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
 
   const sent = message.status === "closed"
 
@@ -198,8 +199,14 @@ function EmailView({
 
   const handleSend = async () => {
     setSending(true)
-    await onReply(message.ticket_id, draftText)
-    setSending(false)
+    setSendError(null)
+    try {
+      await onReply(message.ticket_id, draftText)
+    } catch (e: unknown) {
+      setSendError(e instanceof Error ? e.message : "Failed to send reply")
+    } finally {
+      setSending(false)
+    }
   }
 
   const actionLines = message.action_summary
@@ -335,6 +342,9 @@ function EmailView({
                   Reset
                 </button>
                 <div className="flex-1" />
+                {sendError && (
+                  <span className="text-[11px] text-destructive">{sendError}</span>
+                )}
                 <Button
                   size="sm"
                   className="h-7 gap-1.5 text-xs bg-accent text-accent-foreground hover:bg-accent/90"
@@ -441,7 +451,7 @@ export function InboxPage() {
 
   const handleReply = async (ticketId: string, body?: string) => {
     await api.inbox.sendReply(ticketId, body)
-    fetchAll()
+    await fetchAll()
   }
 
   const handleClose = () => {
